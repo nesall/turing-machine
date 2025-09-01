@@ -1,34 +1,41 @@
-# Prerequisites
-*.d
+# Build directories
+build/
+cmake-build-*/
+bin/
+lib/
+*.so
+*.dll
+*.dylib
+
+# IDE files
+.vscode/
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
 # Compiled Object files
-*.slo
-*.lo
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
+*.lo
+*.slo
 
 # Compiled Dynamic libraries
 *.so
 *.dylib
 *.dll
 
-# Fortran module files
-*.mod
-*.smod
-
 # Compiled Static libraries
-*.lai
-*.la
 *.a
 *.lib
 
@@ -37,5 +44,25 @@
 *.out
 *.app
 
-# debug information files
-*.dwo
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+
+# Testing
+Testing/
+CTestTestfile.cmake
+
+# Coverage reports
+*.gcov
+*.gcno
+*.gcda
+coverage/
+lcov.info
+
+# Benchmarks output
+benchmarks/results/
+*.prof
