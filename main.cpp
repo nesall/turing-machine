@@ -4,6 +4,11 @@
 #include <imgui_impl_opengl3.h>
 #include <iostream>
 
+#include "ui/render.hpp"
+#include "ui/fa_icons.hpp"
+#include "app.hpp"
+
+
 int main() {
   // Initialize GLFW
   if (!glfwInit()) {
@@ -32,13 +37,28 @@ int main() {
   ImGui::CreateContext();
   ImGuiIO &io = ImGui::GetIO(); (void)io;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable keyboard controls
+  io.Fonts->AddFontFromFileTTF("../ui/fonts/rubik-regular.ttf", 16.0f);
+  static const ImWchar icons_ranges[] = { FA_ICON_MIN, FA_ICON_MAX, 0 }; // For FontAwesome
+  ImFontConfig icons_config; 
+  icons_config.MergeMode = true; 
+  icons_config.PixelSnapH = true;
+  io.Fonts->AddFontFromFileTTF("../ui/fonts/fa-light-300.ttf", 16.0f, &icons_config, icons_ranges);
 
   // Setup ImGui style
-  ImGui::StyleColorsDark(); // or ImGui::StyleColorsLight()
+  ImGui::StyleColorsLight(); // or ImGui::StyleColorsLight()
 
   // Setup Platform/Renderer backends
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init("#version 330 core");
+
+  AppState state;
+
+  // Test positions
+  //state.setStatePosition(core::State("q0", core::State::Type::START), ImVec2(200, 200));
+  //state.setStatePosition(core::State("q1"), ImVec2(400, 200));
+  //state.setStatePosition(core::State("qAccept", core::State::Type::ACCEPT), ImVec2(600, 200));
+  //state.setStatePosition(core::State("qReject", core::State::Type::REJECT), ImVec2(800, 200));
+
 
   // Main loop
   while (!glfwWindowShouldClose(window)) {
@@ -49,20 +69,7 @@ int main() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    // Your GUI code here
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(io.DisplaySize);
-    ImGui::Begin("Turing Machine", nullptr,
-      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
-
-
-    ImGui::Text("Hello, World!");
-    if (ImGui::Button("Click Me!")) {
-      std::cout << "Button clicked!\n";
-    }
-    // Your entire app UI goes here - toolbars, canvas, etc.
-    ImGui::End();
+    ui::render(state);
 
     // Rendering
     ImGui::Render();
@@ -86,3 +93,4 @@ int main() {
 
   return 0;
 }
+

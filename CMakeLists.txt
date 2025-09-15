@@ -55,6 +55,12 @@ add_executable(TuringMachineGUI
   main.cpp
   model/turingmachine.cpp
   model/turingmachine.hpp
+  ui/render.cpp
+  ui/render.hpp
+  ui/manipulators.hpp
+  ui/manipulators.cpp
+  ui/fa_icons.hpp
+  app.hpp
 )
 
 # =============================================================================
