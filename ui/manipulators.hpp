@@ -6,35 +6,66 @@
 
 namespace ui {
 
+  class DrawObject;
+
   class Manipulator {
   public:
+    Manipulator(ui::DrawObject *o) : dro_(o) {}
     virtual ~Manipulator() = default;
-    virtual bool handleMouse(const ImGuiIO &io, ImDrawList *drawList) = 0;
-    virtual void draw(ImDrawList *drawList) = 0;
+    virtual void draw() = 0;
     virtual bool isActive() const { return active_; }
+
+    virtual void setFirstPos(float x, float y) = 0;
+    virtual void setNextPos(float x, float y, const ImVec2 &offset) = 0;
+    virtual void setLastPos(float x, float y) = 0;
+
+    void setFirstPos(const ImVec2 &pt) { setFirstPos(pt.x, pt.y); }
+    void setNextPos(const ImVec2 &pt, const ImVec2 &offset) { setNextPos(pt.x, pt.y, offset); }
+    void setLastPos(const ImVec2 &pt) { setLastPos(pt.x, pt.y); }
+
   protected:
+    ui::DrawObject *dro_;
+    ImVec2 prevPos_;
     bool active_ = false;
   };
 
 
   class StateManipulator : public Manipulator {
-    core::State *state_;
-    ImVec2 dragOffset_;
   public:
-    StateManipulator(core::State *state) : state_(state) {}
-    bool handleMouse(const ImGuiIO &io, ImDrawList *drawList) override;
-    void draw(ImDrawList *drawList) override;
+    StateManipulator(ui::DrawObject *p) : Manipulator(p) {}
+    void draw() override;
+
+    void setFirstPos(float x, float y) override;
+    void setNextPos(float x, float y, const ImVec2 &offset) override;
+    void setLastPos(float x, float y) override;
   };
 
 
   class TransitionManipulator : public Manipulator {
-    // Handle arc creation/editing
+  public:
+    TransitionManipulator(ui::DrawObject *p) : Manipulator(p) {}
+
+    void draw() override;
+    void setFirstPos(float x, float y) override;
+    void setNextPos(float x, float y, const ImVec2 &offset) override;
+    void setLastPos(float x, float y) override;
   };
 
 
-  class SelectionManipulator : public Manipulator {
-    // Handle selection box, multi-select
+  class TransitionLabelManipulator : public Manipulator {
+  public:
+    TransitionLabelManipulator(ui::DrawObject *p) : Manipulator(p) {}
+
+    void draw() override;
+    void setFirstPos(float x, float y) override;
+    void setNextPos(float x, float y, const ImVec2 &offset) override;
+    void setLastPos(float x, float y) override;
   };
+
+
+  //class SelectionManipulator : public Manipulator {
+  //  // Handle selection box, multi-select
+  //};
 
 }
 

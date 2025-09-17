@@ -65,7 +65,12 @@ namespace core {
     char writeSymbol() const { return writeSymbol_; }
     Tape::Dir direction() const { return direction_; }
 
-    // Optionally, add comparison operators, print methods, etc.
+    // Setters
+    void setFrom(const State &st) { from_ = st; }
+    void setReadSymbol(char c) { readSymbol_ = c; }
+    void setTo(const State &st) { to_ = st; }
+    void setWriteSymbol(char c) { writeSymbol_ = c; }
+    void setDirection(Tape::Dir dir) { direction_ = dir; }
   };
 
   class TuringMachine {
@@ -81,10 +86,14 @@ namespace core {
     const std::vector<Transition> &transitions() const { return transitions_; }
     std::string nextUniqueStateName() const;
     void addUnconnectedState(const State &st);
-    // Also removes connected transitions
     void removeState(State st);
     bool hasTransitionsFrom(State st) const;
+    void addTransition(const Transition &tr);
     std::vector<State> unconnectedStates() const { return unconnectedStates_; }
+
+    std::string toJson() const;
+    void fromJson(const std::string &json);
+
   private:
     void addTransition(const State &from, char readSymbol, const State &to, char writeSymbol, Tape::Dir dir);
 

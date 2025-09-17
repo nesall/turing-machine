@@ -25,7 +25,14 @@ FetchContent_Declare(
   GIT_TAG        3.4
 )
 
-FetchContent_MakeAvailable(imgui glfw)
+# --- Fetch nlohmann/json (JSON Library) ---
+FetchContent_Declare(
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.2
+)
+
+FetchContent_MakeAvailable(imgui glfw nlohmann_json)
 
 # =============================================================================
 #  3. Create ImGui Library Target
@@ -60,6 +67,8 @@ add_executable(TuringMachineGUI
   ui/manipulators.hpp
   ui/manipulators.cpp
   ui/fa_icons.hpp
+  ui/drawobject.hpp
+  ui/drawobject.cpp
   app.hpp
 )
 
@@ -76,4 +85,5 @@ target_link_libraries(TuringMachineGUI PRIVATE
   imgui
   glfw
   OpenGL::GL
+  nlohmann_json::nlohmann_json
 )

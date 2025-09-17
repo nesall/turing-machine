@@ -5,25 +5,26 @@
 #include <format>
 #include <functional>
 #include <imgui.h>
-#include <cmath>
+#include <iostream>
+#include "ui/drawobject.hpp"
+#include <cassert>
+
 
 namespace {
-  const float stateRadius = 30.0f;
-  core::State tempAddState;
+
+  std::string randomId() {
+    static int counter = 0;
+    return std::format("_random_q{}", counter++);
+  }
+
+  core::State _tempAddState;
+  std::unique_ptr<ui::DrawObject> _tempTransition;
   float _toolbarHeight = 0;
   float _statusBarHeight = 0;
   float _tapeHeight = 0;
   float _canvasHeight = 0;
+
   ImVec2 posMousePosAdjusted(const ImVec2 &pt) { return { pt.x - 5, pt.y - 5 }; }
-  // Converts absolute mouse position -> virtual canvas coordinates
-  ImVec2 _origin;
-  ImVec2 screenToCanvas(const ImVec2 &mouse) {
-    return ImVec2(mouse.x - _origin.x + ImGui::GetScrollX(), mouse.y - _origin.y + ImGui::GetScrollY());
-  }
-  // Converts virtual canvas coordinates -> screen space for drawing
-  ImVec2 canvasToScreen(const ImVec2 &p) {
-    return ImVec2(_origin.x - ImGui::GetScrollX() + p.x, _origin.y - ImGui::GetScrollY() + p.y);
-  }
 
   void styledButton(const char *label, bool active, std::function<void()> onClick) {
     if (active) {
@@ -43,11 +44,7 @@ void drawToolbar(AppState &);
 void drawCanvas(AppState &appState);
 void drawTape(AppState &);
 void drawStatusBar(AppState &appState);
-void drawStates(AppState &);
-void drawTransitions(AppState &, ImDrawList *);
-void handleToolbar(AppState &, ImGuiIO &, ImDrawList *);
-void drawState(const core::State &st, ImVec2 pos, ImU32 clr, bool temp = false);
-
+void handleToolbar(AppState &);
 
 void ui::render(AppState &appState)
 {
@@ -113,39 +110,90 @@ void drawCanvas(AppState &appState)
   ImGui::SetWindowPos(topLeft, ImGuiCond_Always);
   ImGui::SetWindowSize(size, ImGuiCond_Always);
   ImGui::BeginChild("ScrollableArea", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-  _origin = ImGui::GetCursorScreenPos();
+  appState.setCanvasOrigin(ImGui::GetCursorScreenPos());
 
-  ImDrawList *dr = ImGui::GetWindowDrawList();
-  handleToolbar(appState, io, dr);
+  ImVec2 mousePos = io.MousePos;
+  const bool leftClicked = ImGui::IsMouseClicked(0); // 0 = left mouse button
 
-  // Update manipulators
-  for (auto &manipulator : appState.manipulators()) {
-    if (manipulator->handleMouse(io, dr)) {
-      break; // First manipulator wins
+  if (leftClicked) {
+    const bool inCanvas = topLeft.y < mousePos.y && mousePos.y < _canvasHeight;
+    if (inCanvas) {
+      switch (appState.mode()) {
+      case AppState::Mode::SELECT:
+        if (!io.KeyCtrl) {
+          appState.clearManipulators();
+        }
+        if (auto pObj = appState.targetObject(mousePos)) {
+          auto man = pObj->createManipulator();
+          man->setFirstPos(mousePos);
+        } else {
+          appState.clearManipulators();
+        }
+        break;
+      case AppState::Mode::ADD_STATE:
+        tm.addUnconnectedState(_tempAddState);
+        appState.addState(_tempAddState, posMousePosAdjusted(mousePos));
+        break;
+      case AppState::Mode::ADD_TRANSITION:
+        if (auto pObj = appState.targetObject(mousePos); pObj && pObj->asState()) {
+          const auto &state = pObj->asState()->getState();
+          if (!_tempTransition) {
+            core::State dummyState{ randomId() };
+            appState.setStatePosition(dummyState, mousePos);
+            core::Transition tr{ state, core::Alphabet::Blank, dummyState, core::Alphabet::Blank, core::Tape::Dir::RIGHT };
+            auto dro = new ui::TransitionDrawObject(tr, &appState);
+            _tempTransition.reset(dro);
+          } else {
+            auto tr = _tempTransition->asTransition()->getTransition();
+            tr.setTo(state);
+            tm.addTransition(tr);
+            appState.addTransition(tr);
+            _tempTransition.reset();
+          }
+        } else {
+          _tempTransition.reset();
+        }
+        break;
+      }
+    }
+  }
+
+  if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+    if (ImGui::IsMouseDragging(0) && !appState.dragState.isDragging) {
+      appState.dragState.isDragging = true;
+      appState.dragState.dragStartPos = mousePos;
+    }
+  }
+
+  if (appState.dragState.isDragging) {
+    if (!_tempTransition) {
+      auto mans = appState.getManipulators();
+      for (auto m : mans) {
+        m->setNextPos(mousePos, mousePos - appState.dragState.dragStartPos);
+      }
+      appState.dragState.dragStartPos = mousePos;
+    }
+  }
+
+  if (_tempTransition) {
+    const auto &tr = _tempTransition->asTransition()->getTransition();
+    auto toState = tr.to();
+    appState.setStatePosition(toState, posMousePosAdjusted(mousePos));
+  }
+
+
+  if (appState.dragState.isDragging && !ImGui::IsMouseDown(0)) {
+    appState.dragState.isDragging = false;
+    auto mans = appState.getManipulators();
+    for (auto m : mans) {
+      m->setLastPos(mousePos);
     }
   }
 
   // Draw machine
-  drawStates(appState);
-  drawTransitions(appState, dr);
+  appState.drawObjects();
 
-  // Draw manipulator overlays
-  for (auto &manipulator : appState.manipulators()) {
-    manipulator->draw(dr);
-  }
-
-  // Check for mouse click on the canvas
-  ImVec2 mousePos = io.MousePos;
-  bool isHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-  bool leftClicked = ImGui::IsMouseClicked(0); // 0 = left mouse button
-
-  if (leftClicked) {
-    if (appState.mode() == AppState::Mode::ADD_STATE && 
-      topLeft.y < mousePos.y && mousePos.y < _canvasHeight) {
-      appState.setStatePosition(tempAddState, screenToCanvas(posMousePosAdjusted(mousePos)));
-      tm.addUnconnectedState(tempAddState);
-    }
-  }
+  handleToolbar(appState);
 
   ImGui::Dummy(ImVec2(2000, 2000)); // Sets the scrollable area size
   ImGui::EndChild();
@@ -155,76 +203,13 @@ void drawCanvas(AppState &appState)
   ImGui::End();
 }
 
-void drawStates(AppState &appState)
+void handleToolbar(AppState &appState)
 {
-  const core::TuringMachine &tm = appState.tm();
-  for (auto &state : tm.states()) {
-    ImVec2 pos = canvasToScreen(appState.statePosition(state));
-    drawState(state, /*scrollAdjustedPos*/(pos), IM_COL32(0, 0, 0, 255));
-  }
-}
-
-void drawTransitions(AppState &appState, ImDrawList *dr)
-{
+  ImGuiIO &io = ImGui::GetIO();
+  ImDrawList *dr = ImGui::GetWindowDrawList();
   const auto &tm = appState.tm();
-  for (auto &trans : tm.transitions()) {
-    ImVec2 posFrom = appState.statePosition(trans.from());
-    ImVec2 posTo = appState.statePosition(trans.to());
-    ImU32 col = IM_COL32(255, 255, 0, 255);
-
-    // Compute control points for a quadratic Bezier curve to create an arc
-    ImVec2 delta = ImVec2(posTo.x - posFrom.x, posTo.y - posFrom.y);
-    ImVec2 mid = ImVec2((posFrom.x + posTo.x) * 0.5f, (posFrom.y + posTo.y) * 0.5f);
-
-    // Perpendicular direction for arc "height"
-    ImVec2 perp = ImVec2(-delta.y, delta.x);
-    float len = sqrtf(perp.x * perp.x + perp.y * perp.y);
-    if (len > 0.0f) {
-      perp.x /= len;
-      perp.y /= len;
-    }
-    // Arc height: adjust as needed for visual style
-    float arcHeight = 40.0f;
-    ImVec2 control = ImVec2(mid.x + perp.x * arcHeight, mid.y + perp.y * arcHeight);
-
-    // Draw quadratic Bezier arc
-    dr->AddBezierQuadratic(posFrom, control, posTo, col, 3.0f);
-
-    // Draw arrowhead at the end of the arc
-    // Compute direction at end of Bezier: tangent from control to posTo
-    ImVec2 dir = ImVec2(posTo.x - control.x, posTo.y - control.y);
-    float dirLen = sqrtf(dir.x * dir.x + dir.y * dir.y);
-    if (dirLen > 0.0f) {
-      dir.x /= dirLen;
-      dir.y /= dirLen;
-      ImVec2 arrowPerp = ImVec2(-dir.y, dir.x);
-      float arrowSize = 10.0f;
-      ImVec2 arrowP1 = ImVec2(posTo.x - dir.x * arrowSize + arrowPerp.x * (arrowSize / 2), posTo.y - dir.y * arrowSize + arrowPerp.y * (arrowSize / 2));
-      ImVec2 arrowP2 = ImVec2(posTo.x - dir.x * arrowSize - arrowPerp.x * (arrowSize / 2), posTo.y - dir.y * arrowSize - arrowPerp.y * (arrowSize / 2));
-      dr->AddTriangleFilled(posTo, arrowP1, arrowP2, col);
-    }
-
-    // Draw transition label at the arc's midpoint (use Bezier midpoint for better placement)
-    float t = 0.5f;
-    ImVec2 bezierMid = ImVec2(
-      (1 - t) * (1 - t) * posFrom.x + 2 * (1 - t) * t * control.x + t * t * posTo.x,
-      (1 - t) * (1 - t) * posFrom.y + 2 * (1 - t) * t * control.y + t * t * posTo.y
-    );
-    auto label = std::format("{}; {}, {}", trans.readSymbol(), trans.writeSymbol(), "->");
-    ImVec2 text_size = ImGui::CalcTextSize(label.c_str());
-    dr->AddText(ImVec2(bezierMid.x - text_size.x / 2, bezierMid.y - text_size.y / 2), IM_COL32(0, 0, 0, 255), label.c_str());
-  }
-}
-
-void handleToolbar(AppState &appState, ImGuiIO &io, ImDrawList *dr)
-{
-  const auto &tm = appState.tm();
-
-  // Mode switching is handled in drawToolbar
-  // Here we can handle mode-specific actions if needed
   switch (appState.mode()) {
   case AppState::Mode::SELECT:
-    // Handle select mode actions
     break;
   case AppState::Mode::ADD_STATE:
     if (1) {
@@ -232,32 +217,20 @@ void handleToolbar(AppState &appState, ImGuiIO &io, ImDrawList *dr)
       ImU32 orange = IM_COL32(255, 165, 0, 255);
       auto s = tm.nextUniqueStateName();
       auto t = tm.states().size() == 0 ? core::State::Type::START : core::State::Type::NORMAL;
-      drawState(tempAddState = core::State(s, t), posMousePosAdjusted(pos), orange, true);
+      ui::StateDrawObject::drawState(_tempAddState = core::State(s, t), posMousePosAdjusted(pos), orange, true);
+      //std::cout << "handleToolbar " << s << "\n";
     }
     break;
   case AppState::Mode::ADD_TRANSITION:
-    // Handle add transition actions
+    if (_tempTransition) {
+      auto pos = io.MousePos;
+      ImU32 orange = IM_COL32(255, 165, 0, 255);
+      _tempTransition->draw();
+      if (auto pObj = appState.targetObject(pos); pObj && pObj->asState()) {
+        auto st{pObj->asState()->getState()};
+        ui::StateDrawObject::drawState(st, pObj->centerPoint(), orange, false);
+      }
+    }
     break;
   }
-}
-
-void drawState(const core::State &state, ImVec2 pos, ImU32 clr, bool temp)
-{
-  ImDrawList *dr = ImGui::GetWindowDrawList();
-  ImU32 textClr = IM_COL32(0, 0, 0, 255);
-  if (!temp) {
-    auto  fill = IM_COL32(0, 128, 255, 255);
-    if (state.isAccept()) {
-      fill = IM_COL32(0, 255, 0, 255);
-    } else if (state.isReject()) {
-      fill = IM_COL32(255, 0, 0, 255);
-    } else if (state.isStart()) {
-      fill = IM_COL32(102, 178, 255, 255);
-    }
-    dr->AddCircleFilled(pos, stateRadius, fill);
-    textClr = IM_COL32(255, 255, 255, 255);
-  }
-  dr->AddCircle(pos, stateRadius, clr, 64, 2.0f);
-  ImVec2 text_size = ImGui::CalcTextSize(state.name().c_str());
-  dr->AddText(ImVec2(pos.x - text_size.x / 2, pos.y - text_size.y / 2), textClr, state.name().c_str());
 }

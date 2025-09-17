@@ -5,7 +5,8 @@ class AppState;
 
 namespace ui {
   void render(AppState &state);
-}
+
+} // namespace ui
 
 
 #endif // _RENDER_HPP_
