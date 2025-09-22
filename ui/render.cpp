@@ -17,8 +17,6 @@ namespace {
   float _tapeHeight = 0;
   float _canvasHeight = 0;
 
-  //ImVec2 posMousePosAdjusted(const ImVec2 &pt) { return { pt.x - 5, pt.y - 5 }; }
-
   void styledButton(const char *label, bool active, std::function<void()> onClick) {
     if (active) {
       ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(0, 255, 0, 255));
@@ -76,7 +74,64 @@ void drawTape(AppState &appState)
   ImGui::Begin("Tape", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
   ImGui::SetWindowPos(ImVec2(0, io.DisplaySize.y - h - _statusBarHeight + 2), ImGuiCond_Always);
   ImGui::SetWindowSize(ImVec2(io.DisplaySize.x, h), ImGuiCond_Always);
-  ImGui::Text("Tape Area");
+  
+  // Example tape content
+  //ImGui::TextUnformatted("Tape: [ _ _ _ _ _ _ _ _ _ ]");
+
+  ImDrawList *dr = ImGui::GetWindowDrawList();
+
+  // Draw a 1-row grid of h x h cells
+
+  h *= 0.96f;
+
+  auto &tm = appState.tm();
+  auto &tape = tm.tape();
+
+  const int numCells = static_cast<int>(io.DisplaySize.x / h);
+
+  const ImVec2 startPos = ImGui::GetWindowPos() + ImVec2{ 0, 1 };
+
+  for (int i = 0; i < numCells; ++i) {
+    const bool middleCell = i == numCells / 2;
+    ImVec2 cellPos = ImVec2(startPos.x + i * h, startPos.y);
+    dr->AddRect(cellPos, ImVec2(cellPos.x + h, cellPos.y + h), middleCell ? Colors::blue : Colors::pastelBlue);
+
+    // Middle cell has a head marker
+    if (middleCell) {
+      dr->AddTriangleFilled(
+        ImVec2(cellPos.x + h * 0.5f - 6, cellPos.y + h - 4), 
+        ImVec2(cellPos.x + h * 0.5f + 6, cellPos.y + h - 4), 
+        ImVec2(cellPos.x + h * 0.5f, cellPos.y + h - 12), 
+        Colors::red);
+    }
+
+    // Use tape to draw it's content
+    auto tapeIndex = tape.head() + i - numCells / 2;
+    char c = tape.readAt(tapeIndex);
+    ImGui::SetCursorScreenPos(ImVec2(cellPos.x + h * 0.5f - 4, cellPos.y + h * 0.5f - 8));
+    ImGui::TextUnformatted(c == '\0' ? "_" : std::string(1, c).c_str());
+
+
+    // Example: Draw cell index
+    ImGui::SetCursorScreenPos(ImVec2(cellPos.x + 4, cellPos.y + 0));
+    // Set text color to gray
+    ImGui::PushStyleColor(ImGuiCol_Text, Colors::lightGray);
+    ImGui::Text("%d", tapeIndex);
+    ImGui::PopStyleColor();
+  }
+
+
+
+  // Left-most button with text '<' and right most button with text '>'
+  if (ImGui::Button("<")) {
+    tape.moveLeft();
+  }
+  ImGui::SameLine();
+  ImGui::SetCursorPosX(io.DisplaySize.x - 30);
+  if (ImGui::Button(">")) {
+    tape.moveRight();
+  }
+
   _tapeHeight = ImGui::GetWindowHeight();
   ImGui::End();
 }
@@ -175,7 +230,6 @@ void handleToolbar(AppState &appState)
     }
     break;
   case AppState::Menu::ADD_TRANSITION:
-    //appState.dragState.mode = DragState::Mode::TRANSITION_CONNECT_END;
     break;
   }
 }
@@ -183,7 +237,7 @@ void handleToolbar(AppState &appState)
 void drawTempTransition(AppState &appState)
 {
   ImGuiIO &io = ImGui::GetIO();
-  if (appState.dragState.isTransitionConnecting()) {
+  if (appState.menu() == AppState::Menu::ADD_TRANSITION || appState.dragState.isTransitionConnecting()) {
     auto pos = io.MousePos;
     if (auto pObj = appState.targetObject(pos); pObj && pObj->asState()) {
       ui::StateDrawObject::drawState(pObj->asState()->getState(), pObj->centerPoint(), Colors::maroon, false);
@@ -213,6 +267,9 @@ void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
     appState.addState(appState._tempAddState, posOffset(mousePos));
     break;
   case AppState::Menu::ADD_TRANSITION:
+    if (!appState.dragState.isTransitionConnecting()) {
+      appState.clearManipulators();
+    }
     addingTransition = true;
     break;
   }

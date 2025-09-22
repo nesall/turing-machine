@@ -70,6 +70,7 @@ add_executable(TuringMachineGUI
   ui/drawobject.hpp
   ui/drawobject.cpp
   app.hpp
+  app.cpp
   defs.hpp
 )
 

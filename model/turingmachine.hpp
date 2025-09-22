@@ -22,10 +22,16 @@ namespace core {
     int headPosition_ = 0;
   public:
     enum class Dir { LEFT, RIGHT };
-    char read() const { return cells_.contains(headPosition()) ? cells_.at(headPosition()) : Alphabet::Blank; }
-    void write(char symbol) { cells_[headPosition()] = symbol; }
-    void move(Dir dir) { dir == Dir::LEFT ? headPosition_ -- : headPosition_ ++; }
-    int headPosition() const { return headPosition_; }
+    int head() const { return headPosition_; }
+    char read() const { return cells_.contains(head()) ? cells_.at(head()) : Alphabet::Blank; }
+    void write(char symbol) { cells_[head()] = symbol; }
+    void move(Dir dir) { dir == Dir::LEFT ? moveLeft() : moveRight(); }
+    void moveLeft() { headPosition_ --; }
+    void moveRight() { headPosition_ ++; }
+    void moveToLeftMost() { if (cells_.empty()) return; headPosition_ = cells_.begin()->first; }
+    void moveToRightMost() { if (cells_.empty()) return; headPosition_ = cells_.rbegin()->first; }
+
+    char readAt(int index) const { return cells_.contains(index) ? cells_.at(index) : Alphabet::Blank; }
   };
 
   class State {
@@ -84,6 +90,7 @@ namespace core {
 
     State currentState() const { return currentState_; }
     const Tape &tape() const { return tape_; }
+    Tape &tape() { return tape_; }
     void step();
     bool isAccepting() const;
     bool isRejecting() const;

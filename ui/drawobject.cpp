@@ -1,5 +1,6 @@
 #include "ui/drawobject.hpp"
 #include "app.hpp"
+#include "defs.hpp"
 #include "ui/manipulators.hpp"
 #include "model/turingmachine.hpp"
 #include <variant>
@@ -11,134 +12,38 @@ namespace {
 } // anonymous namespace
 
 
-#if 0
-
-struct ui::DrawObject::Impl {
-  AppState *pAppState_ = nullptr;
-  std::variant<core::State, core::Transition> obj_;
-  std::unique_ptr<ui::Manipulator> manipulator_ = nullptr;
-};
-
-ui::DrawObject::DrawObject(const core::State &state, AppState *app) : imp(std::make_unique<Impl>())
-{
-  imp->obj_ = state;
-  imp->pAppState_ = app;
-}
-
-ui::DrawObject::DrawObject(const core::Transition &trans, AppState *app) : imp(std::make_unique<Impl>())
-{
-  imp->obj_ = trans;
-  imp->pAppState_ = app;
-}
-
-ui::DrawObject::~DrawObject()
+ui::StateDrawObject::StateDrawObject(const core::State &state, AppState *app)
+  : DrawObject(app), state_(state)
 {
 }
 
-ui::Manipulator *ui::DrawObject::getOrCreateManipulator(bool bCreate)
+void ui::StateDrawObject::draw() const
 {
-  if (imp->manipulator_) return imp->manipulator_.get();
+  ImVec2 pos = appState_->statePosition(state_);
+  drawState(state_, pos, Colors::black);
+}
+
+utils::Rect ui::StateDrawObject::boundingRect() const
+{
+  ImVec2 pos = appState_->statePosition(state_);
+  return utils::Rect{ pos.x - _stateRadius, pos.y - _stateRadius, _stateRadius * 2, _stateRadius * 2 };
+}
+
+void ui::StateDrawObject::translate(const ImVec2 &delta)
+{
+  ImVec2 pos = appState_->statePosition(state_);
+  appState_->setStatePosition(state_, pos + delta);
+}
+
+ui::Manipulator *ui::StateDrawObject::getOrCreateManipulator(bool bCreate)
+{
+  if (manipulator_) return manipulator_.get();
   if (bCreate) {
-    if (std::holds_alternative<core::State>(imp->obj_)) {
-      imp->manipulator_.reset(new ui::StateManipulator(this));
-      return imp->manipulator_.get();
-    } else if (std::holds_alternative<core::Transition>(imp->obj_)) {
-      imp->manipulator_.reset(new ui::TransitionManipulator(this));
-      return imp->manipulator_.get();
-    }
-    assert(!"Should not be here!");
+    manipulator_.reset(new ui::StateManipulator(this));
+    return manipulator_.get();
   }
   return nullptr;
 }
-
-void ui::DrawObject::removeManipulator()
-{
-  imp->manipulator_.reset();
-}
-
-ui::Rect ui::DrawObject::boundingRect() const
-{
-  if (std::holds_alternative<core::State>(imp->obj_)) {
-    const core::State &st = std::get<core::State>(imp->obj_);
-    ImVec2 pos = imp->pAppState_->statePosition(st);
-    return ui::Rect{ pos.x - _stateRadius, pos.y - _stateRadius, _stateRadius * 2, _stateRadius * 2 };
-  } else if (std::holds_alternative<core::Transition>(imp->obj_)) {
-    const core::Transition &tr = std::get<core::Transition>(imp->obj_);
-    ImVec2 posFrom = imp->pAppState_->statePosition(tr.from());
-    ImVec2 posTo = imp->pAppState_->statePosition(tr.to());
-    float minX = std::min(posFrom.x, posTo.x);
-    float minY = std::min(posFrom.y, posTo.y);
-    float maxX = std::max(posFrom.x, posTo.x);
-    float maxY = std::max(posFrom.y, posTo.y);
-    // Add some padding for the curve and arrowhead
-    const float padding = 0.0f;
-    return ui::Rect{ minX - padding, minY - padding, (maxX - minX) + 2 * padding, (maxY - minY) + 2 * padding };
-  }
-  return ui::Rect();
-}
-
-ImVec2 ui::DrawObject::centerPoint() const
-{
-  return boundingRect().center();
-}
-
-bool ui::DrawObject::containsPoint(float x, float y) const
-{
-  return boundingRect().contains(x, y);
-}
-
-void ui::DrawObject::draw() const
-{
-  if (std::holds_alternative<core::State>(imp->obj_)) {
-    const core::State &st = std::get<core::State>(imp->obj_);
-    ImVec2 pos = imp->pAppState_->statePosition(st);
-    ui::DrawObject::drawState(st, pos, IM_COL32(0, 0, 0, 255));
-  } else if (std::holds_alternative<core::Transition>(imp->obj_)) {
-    const core::Transition &tr = std::get<core::Transition>(imp->obj_);
-    ImVec2 posFrom = imp->pAppState_->statePosition(tr.from());
-    ImVec2 posTo = imp->pAppState_->statePosition(tr.to());
-    auto controlPoints = ui::DrawObject::drawTransition(tr, posFrom, posTo);
-    if (controlPoints.isValid) {
-      ImDrawList *drawList = ImGui::GetWindowDrawList();
-      const float handleRadius = 4.0f;
-      ImU32 handleColor = IM_COL32(32, 165, 255, 255);
-      drawList->AddCircleFilled(controlPoints.startPoint, handleRadius, handleColor);
-      drawList->AddCircleFilled(controlPoints.midPoint, handleRadius, handleColor);
-      drawList->AddCircleFilled(controlPoints.endPoint, handleRadius, handleColor);
-    }
-  }
-}
-
-void ui::DrawObject::translate(const ImVec2 &d)
-{
-  if (std::holds_alternative<core::State>(imp->obj_)) {
-    const core::State &st = std::get<core::State>(imp->obj_);
-    ImVec2 pos = imp->pAppState_->statePosition(st);
-    imp->pAppState_->setStatePosition(st, pos + d);
-  }
-}
-
-bool ui::DrawObject::isState() const
-{
-  return std::holds_alternative<core::State>(imp->obj_);
-}
-
-std::optional<core::State> ui::DrawObject::getState() const
-{
-  if (std::holds_alternative<core::State>(imp->obj_)) {
-    return std::get<core::State>(imp->obj_);
-  }
-  return std::nullopt;
-}
-
-std::optional<core::Transition> ui::DrawObject::getTransition() const
-{
-  if (std::holds_alternative<core::Transition>(imp->obj_)) {
-    return std::get<core::Transition>(imp->obj_);
-  }
-  return std::nullopt;
-}
-#endif
 
 void ui::StateDrawObject::drawState(const core::State &state, ImVec2 pos, ImU32 clr, bool temp)
 {
@@ -165,6 +70,10 @@ float ui::StateDrawObject::radius()
 {
   return _stateRadius;
 }
+
+
+//------------------------------------------------------------------------------------------
+
 
 ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core::Transition &trans, ImVec2 posFrom, ImVec2 posTo, const TransitionStyle &style)
 {
@@ -222,6 +131,9 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core:
 
   // Draw quadratic Bezier arc from edge to edge
   dr->AddBezierQuadratic(edgeFrom, control, edgeTo, style.color, style.lineThickness);
+  if (style.colorHightlight) {
+    dr->AddBezierQuadratic(edgeFrom, control, edgeTo, style.colorHightlight.value(), (style.lineThickness / 2.f));
+  }
 
   // Draw arrowhead
   drawArrowhead(edgeTo, control, style);
@@ -231,8 +143,6 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core:
 
   return controlPoints;
 }
-
-
 
 ui::TransitionControlPoints ui::TransitionDrawObject::drawSelfLoop(const core::Transition &trans, ImVec2 pos, const TransitionStyle &style)
 {
@@ -336,68 +246,6 @@ void ui::TransitionDrawObject::drawArrowheadAtPoint(ImVec2 tipPos, ImVec2 direct
   dr->AddTriangleFilled(tipPos, arrowP1, arrowP2, style.color);
 }
 
-//void ui::TransitionDrawObject::drawTransitionLabel(const core::Transition &trans, ImVec2 start, ImVec2 control, ImVec2 end, const TransitionStyle &style)
-//{
-//  ImDrawList *dr = ImGui::GetWindowDrawList();
-//
-//  // Use Bezier midpoint for label placement
-//  float t = 0.5f;
-//  ImVec2 bezierMid = ImVec2(
-//    (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * control.x + t * t * end.x,
-//    (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * control.y + t * t * end.y
-//  );
-//
-//  auto label = std::format("{}; {}, {}", trans.readSymbol(), trans.writeSymbol(),
-//    trans.direction() == core::Tape::Dir::LEFT ? "L" : "R");
-//
-//  ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
-//
-//  // Add background rectangle for better readability
-//  ImVec2 labelPos = ImVec2(bezierMid.x - textSize.x / 2, bezierMid.y - textSize.y / 2);
-//  dr->AddRectFilled(ImVec2(labelPos.x - 2, labelPos.y - 1),
-//    ImVec2(labelPos.x + textSize.x + 2, labelPos.y + textSize.y + 1),
-//    IM_COL32(255, 255, 255, 200));
-//
-//  dr->AddText(labelPos, style.textColor, label.c_str());
-//}
-
-
-
-ui::StateDrawObject::StateDrawObject(const core::State &state, AppState *app) 
-  : DrawObject(app), state_(state)
-{
-}
-
-void ui::StateDrawObject::draw() const
-{
-  ImVec2 pos = appState_->statePosition(state_);
-  drawState(state_, pos, Colors::black);
-}
-
-ui::Rect ui::StateDrawObject::boundingRect() const
-{
-  ImVec2 pos = appState_->statePosition(state_);
-  return ui::Rect{ pos.x - _stateRadius, pos.y - _stateRadius, _stateRadius * 2, _stateRadius * 2 };
-}
-
-void ui::StateDrawObject::translate(const ImVec2 &delta)
-{
-  ImVec2 pos = appState_->statePosition(state_);
-  appState_->setStatePosition(state_, pos + delta);
-}
-
-ui::Manipulator *ui::StateDrawObject::getOrCreateManipulator(bool bCreate)
-{
-  if (manipulator_) return manipulator_.get();
-  if (bCreate) {
-    manipulator_.reset(new ui::StateManipulator(this));
-    return manipulator_.get();
-  }
-  return nullptr;
-}
-
-
-
 ui::TransitionDrawObject::TransitionDrawObject(const core::Transition &trans, AppState *app) 
   : DrawObject(app), transition_(trans)
 {
@@ -408,7 +256,11 @@ void ui::TransitionDrawObject::draw() const
   if (isVisible()) {
     ImVec2 posFrom = appState_->statePosition(transition_.from());
     ImVec2 posTo = appState_->statePosition(transition_.to());
-    controlPoints_ = drawTransition(transition_, posFrom, posTo, style_);
+    auto style{ style_ };
+    if (manipulator_) {
+      style.colorHightlight = Colors::red;
+    }
+    controlPoints_ = drawTransition(transition_, posFrom, posTo, style);
     if (controlPoints_.isValid) {
       ImDrawList *drawList = ImGui::GetWindowDrawList();
       const float handleRadius = 4.0f;
@@ -428,9 +280,9 @@ bool ui::TransitionDrawObject::containsPoint(float x, float y) const
   return false;
 }
 
-ui::Rect ui::TransitionDrawObject::boundingRect() const
+utils::Rect ui::TransitionDrawObject::boundingRect() const
 {
-  return ui::Rect();
+  return utils::Rect();
 }
 
 void ui::TransitionDrawObject::translate(const ImVec2 &delta)
@@ -447,6 +299,18 @@ ui::Manipulator *ui::TransitionDrawObject::getOrCreateManipulator(bool bCreate)
   return nullptr;
 }
 
+void ui::TransitionDrawObject::addLabel(TransitionLabelDrawObject *label)
+{
+  labels_.push_back(label);
+}
+
+void ui::TransitionDrawObject::removeLabel(TransitionLabelDrawObject *label)
+{
+  labels_.erase(std::remove(labels_.begin(), labels_.end(), label), labels_.end());
+}
+
+
+//------------------------------------------------------------------------------------------
 
 
 ui::TransitionLabelDrawObject::TransitionLabelDrawObject(const ui::TransitionDrawObject *tdo, AppState *app)
@@ -487,8 +351,14 @@ void ui::TransitionLabelDrawObject::draw() const
   const auto &trans = tdo_->getTransition();
   const auto &style = tdo_->transitionStyle();
 
-  auto label = std::format("{}; {}, {}", trans.readSymbol(), trans.writeSymbol(),
-    trans.direction() == core::Tape::Dir::LEFT ? "L" : "R");
+  auto displayC = [](char c) {
+    return std::string(1, '-');
+    };
+  auto displayDir = [](core::Tape::Dir d) {
+    return std::string(d == core::Tape::Dir::LEFT ? "<=" : "=>");
+    };
+
+  auto label = std::format("('{}') ; ('{}', {})", displayC(trans.readSymbol()), displayC(trans.writeSymbol()), displayDir(trans.direction()));
 
   ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
 
@@ -503,13 +373,17 @@ void ui::TransitionLabelDrawObject::draw() const
   rect_.x = labelPos.x;
   rect_.y = labelPos.y;
   rect_.w = textSize.x;
-  rect_.y = textSize.y;
+  rect_.h = textSize.y;
+}
+
+utils::Rect ui::TransitionLabelDrawObject::boundingRect() const
+{
+  return rect_;
 }
 
 void ui::TransitionLabelDrawObject::translate(const ImVec2 &delta)
 {
   if (!hasManualPosition_) {
-    // First time user is moving it, switch to manual mode
     ImVec2 autoPos = getAutoPosition();
     manualOffset_ = getFinalPosition() - autoPos;
     hasManualPosition_ = true;

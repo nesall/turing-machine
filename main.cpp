@@ -53,6 +53,14 @@ int main() {
 
   AppState state;
 
+  auto &tape = state.tm().tape();
+  char a[4] = {'A', 'B', 'C', 'D'};
+  for (int j = 0; j < 20; j ++) {
+    tape.write(a[(j % (j % 4 + 1) + 1) % 4]);
+    tape.moveRight();
+  }
+  tape.moveToLeftMost();
+
   // Test positions
   //state.setStatePosition(core::State("q0", core::State::Type::START), ImVec2(200, 200));
   //state.setStatePosition(core::State("q1"), ImVec2(400, 200));
@@ -76,7 +84,7 @@ int main() {
     int display_w, display_h;
     glfwGetFramebufferSize(window, &display_w, &display_h);
     glViewport(0, 0, display_w, display_h);
-    glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+    glClearColor(0.61, 0.61f, 0.61f, 1.00f);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

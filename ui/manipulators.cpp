@@ -57,6 +57,8 @@ void ui::StateManipulator::setLastPos(float x, float y)
 }
 
 
+//------------------------------------------------------------------------------------------
+
 
 struct ui::TransitionManipulator::Impl {
   std::optional<ui::TransitionControlPoints::PointIndex> iPoint;
@@ -77,8 +79,6 @@ ui::TransitionManipulator::~TransitionManipulator()
 void ui::TransitionManipulator::draw()
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
-  //auto rc = dro_->boundingRect();
-  //dr->AddRect(ImVec2(rc.x, rc.y), ImVec2(rc.x + rc.w, rc.y + rc.h), IM_COL32(255, 0, 0, 255));
   if (imp->iPoint.has_value()) {
     auto drt = dro_->asTransition();
     auto pt = drt->controlPoints().points[imp->iPoint.value()];
@@ -312,17 +312,26 @@ void ui::TransitionManipulator::handleSelfLoopManipulation(float x, float y, con
 }
 
 
+//------------------------------------------------------------------------------------------
+
 
 void ui::TransitionLabelManipulator::draw()
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
   auto rc = dro_->boundingRect();
-  dr->AddRect(ImVec2(rc.x, rc.y), ImVec2(rc.x + rc.w, rc.y + rc.h), Colors::red);
+  dr->AddRect(ImVec2(rc.x - 1.5f, rc.y - 1.f), ImVec2(rc.x + rc.w + 2.f, rc.y + rc.h + 2.f), Colors::red);
+  auto drl = dro_->asTransitionLabel();
+  assert(drl);
+  auto drt = drl->transitionDrawObject();
+  assert(drt);
+  auto controlPoints = drt->controlPoints();
+  ImVec2 midPoint = controlPoints.points[TransitionControlPoints::MID];
+  ImVec2 labelCenter = ImVec2(rc.x + rc.w * 0.5f, rc.y + rc.h * 0.5f);
+  dr->AddLine(midPoint, labelCenter, Colors::gray, 1.0f);
 }
 
 void ui::TransitionLabelManipulator::setFirstPos(float x, float y)
 {
-
 }
 
 void ui::TransitionLabelManipulator::setNextPos(float x, float y, const ImVec2 &offset)
