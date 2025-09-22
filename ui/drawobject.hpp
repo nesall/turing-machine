@@ -13,6 +13,7 @@ class AppState;
 namespace ui {
 
   class Manipulator;
+  class TransitionManipulator;
 
   struct Rect {
     float x = 0, y = 0, w = 0, h = 0;
@@ -36,10 +37,17 @@ namespace ui {
   };
 
   struct TransitionControlPoints {
-    ImVec2 startPoint;    // Where arc begins (edge of from-state)
-    ImVec2 midPoint;      // Where label is (bezier midpoint)
-    ImVec2 endPoint;      // Where arc ends (edge of to-state)
+    enum PointIndex { START = 0, MID = 1, END = 2 };
+    ImVec2 points[3];
     bool isValid = false; // False for degenerate cases
+    std::optional<TransitionControlPoints::PointIndex> hitTest(float x, float y, float radius = 6) const {
+      for (int i = 0; i <= END; ++i) {
+        if (sqrtf((x - points[i].x) * (x - points[i].x) + (y - points[i].y) * (y - points[i].y)) <= radius) {
+          return static_cast<TransitionControlPoints::PointIndex>(i);
+        }
+      }
+      return std::nullopt;
+    }
   };
 
 #if 0
@@ -111,6 +119,9 @@ namespace ui {
     virtual ImVec2 centerPoint() const { return boundingRect().center(); }
     virtual void translate(const ImVec2 &delta) = 0;
 
+    void setVisible(bool visible) { visible_ = visible; }
+    bool isVisible() const { return visible_; }
+
     // Optional: type checking
     //virtual DrawObjectType getType() const = 0;
 
@@ -123,7 +134,10 @@ namespace ui {
     virtual TransitionDrawObject *asTransition() { return nullptr; }
     virtual TransitionLabelDrawObject *asTransitionLabel() { return nullptr; }
 
+    AppState *appState() const { return appState_; }
+
   protected:
+    bool visible_ = true;
     AppState *appState_;
     std::unique_ptr<Manipulator> manipulator_;
   };
@@ -142,9 +156,12 @@ namespace ui {
 
   public:
     static void drawState(const core::State &state, ImVec2 pos, ImU32 clr, bool temp = false);
+    static float radius();
   };
 
   class TransitionDrawObject : public DrawObject {
+    friend class TransitionManipulator;
+
     core::Transition transition_;
     mutable TransitionControlPoints controlPoints_;
     TransitionStyle style_;

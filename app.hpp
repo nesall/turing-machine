@@ -1,51 +1,33 @@
 #ifndef _APP_HPP_
 #define _APP_HPP_
 
+#include "defs.hpp"
+#include "model/turingmachine.hpp"
+#include "ui/manipulators.hpp"
+#include "ui/drawobject.hpp"
 #include <imgui.h>
 #include <map>
 #include <vector>
 #include <memory>
-#include "model/turingmachine.hpp"
-#include "ui/manipulators.hpp"
-#include "ui/drawobject.hpp"
-
-
-inline ImVec2 operator -(const ImVec2 &a, const ImVec2 &b) {
-  return ImVec2(a.x - b.x, a.y - b.y);
-}
-
-inline ImVec2 operator +(const ImVec2 &a, const ImVec2 &b) {
-  return ImVec2(a.x + b.x, a.y + b.y);
-}
-
-inline ImVec2 &operator+=(ImVec2 &a, const ImVec2 &b) {
-  a.x += b.x;
-  a.y += b.y;
-  return a;
-}
-
-
-
-struct DragState {
-  bool isDragging = false;
-  ImVec2 dragStartPos;
-};
 
 class AppState {
 public:
-  enum class Mode { SELECT, ADD_STATE, ADD_TRANSITION };
+  // TODO: rename Mode to Menu
+  enum class Menu { SELECT, ADD_STATE, ADD_TRANSITION };
 private:
   core::TuringMachine tm_;
-  AppState::Mode mode_ = Mode::SELECT;
+  AppState::Menu menu_ = Menu::SELECT;
   std::map<core::State, ImVec2> stateToPosition_;
   ImVec2 canvasOrigin_;
   std::vector<std::unique_ptr<ui::DrawObject>> drawObjects_;
 public:
   DragState dragState;
+  core::State _tempAddState;
+  //std::unique_ptr<ui::DrawObject> tempTransition_;
   const core::TuringMachine &tm() const { return tm_; }
   core::TuringMachine &tm() { return tm_; }
-  AppState::Mode mode() const { return mode_; }
-  void setMode(AppState::Mode m) { mode_ = m; }
+  AppState::Menu menu() const { return menu_; }
+  void setMenu(AppState::Menu m) { menu_ = m; }
   ImVec2 statePosition(const core::State &state) const { 
     return canvasToScreen(stateToPosition_.at(state));
   }
@@ -53,11 +35,43 @@ public:
     stateToPosition_[state] = screenToCanvas(pos); 
   }
   void addState(const core::State &state, ImVec2 pos) { 
+    tm_.addUnconnectedState(state);
     stateToPosition_[state] = screenToCanvas(pos);
     drawObjects_.emplace_back(std::make_unique<ui::StateDrawObject>(state, this));
   }
-  void addTransition(const core::Transition &trans) { 
+  ui::TransitionDrawObject *addTransition(const core::Transition &trans) {
+    tm_.addTransition(trans);
     drawObjects_.emplace_back(std::make_unique<ui::TransitionDrawObject>(trans, this));
+    return static_cast<ui::TransitionDrawObject *>(drawObjects_.back().get());
+  }
+  void removeState(const core::State &state) {
+    tm_.removeState(state);
+    stateToPosition_.erase(state);
+    // Remove from draw objects (state + all its transitions)
+    drawObjects_.erase(std::remove_if(drawObjects_.begin(), drawObjects_.end(),
+      [&](const std::unique_ptr<ui::DrawObject> &obj) {
+        if (auto stateObj = obj->asState()) {
+          return stateObj->getState() == state;
+        }
+        if (auto transObj = obj->asTransition()) {
+          const auto &trans = transObj->getTransition();
+          return trans.from() == state || trans.to() == state;
+        }
+        return false;
+      }), drawObjects_.end());
+  }
+  void removeTransition(const core::Transition &trans) {
+    tm_.removeTransition(trans);
+    drawObjects_.erase(std::remove_if(drawObjects_.begin(), drawObjects_.end(),
+      [&](const std::unique_ptr<ui::DrawObject> &obj) {
+        if (auto p = obj->asTransition()) {
+          return p->getTransition() == trans;
+        }
+        return false;
+      }), drawObjects_.end());
+  }
+  ui::DrawObject *lastAddedDrawObject() {
+    return drawObjects_.back().get();
   }
 
 #if 0

@@ -1,6 +1,7 @@
 #ifndef _RENDER_HPP_
 #define _RENDER_HPP_
 
+
 class AppState;
 
 namespace ui {

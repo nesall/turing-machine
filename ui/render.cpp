@@ -1,8 +1,8 @@
 #include "ui/render.hpp"
 #include "ui/fa_icons.hpp"
 #include "app.hpp"
+#include "defs.hpp"
 #include "model/turingmachine.hpp"
-#include <format>
 #include <functional>
 #include <imgui.h>
 #include <iostream>
@@ -12,19 +12,12 @@
 
 namespace {
 
-  std::string randomId() {
-    static int counter = 0;
-    return std::format("_random_q{}", counter++);
-  }
-
-  core::State _tempAddState;
-  std::unique_ptr<ui::DrawObject> _tempTransition;
   float _toolbarHeight = 0;
   float _statusBarHeight = 0;
   float _tapeHeight = 0;
   float _canvasHeight = 0;
 
-  ImVec2 posMousePosAdjusted(const ImVec2 &pt) { return { pt.x - 5, pt.y - 5 }; }
+  //ImVec2 posMousePosAdjusted(const ImVec2 &pt) { return { pt.x - 5, pt.y - 5 }; }
 
   void styledButton(const char *label, bool active, std::function<void()> onClick) {
     if (active) {
@@ -45,6 +38,9 @@ void drawCanvas(AppState &appState);
 void drawTape(AppState &);
 void drawStatusBar(AppState &appState);
 void handleToolbar(AppState &);
+void drawTempTransition(AppState &appState);
+void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io);
+
 
 void ui::render(AppState &appState)
 {
@@ -62,12 +58,12 @@ void drawToolbar(AppState &appState)
   ImGui::SetWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImDrawList *dr = ImGui::GetWindowDrawList();
 
-  using M = AppState::Mode;
-  styledButton(ICON_FA_MOUSE_POINTER " Select", appState.mode() == M::SELECT, [&] { appState.setMode(M::SELECT); });
+  using M = AppState::Menu;
+  styledButton(ICON_FA_MOUSE_POINTER " Select", appState.menu() == M::SELECT, [&] { appState.setMenu(M::SELECT); });
   ImGui::SameLine();
-  styledButton(ICON_FA_PLUS_CIRCLE " Add State", appState.mode() == M::ADD_STATE, [&] { appState.setMode(M::ADD_STATE); });
+  styledButton(ICON_FA_PLUS_CIRCLE " Add State", appState.menu() == M::ADD_STATE, [&] { appState.setMenu(M::ADD_STATE); });
   ImGui::SameLine();
-  styledButton(ICON_FA_PLUS " Add Transition", appState.mode() == M::ADD_TRANSITION, [&] { appState.setMode(M::ADD_TRANSITION); });
+  styledButton(ICON_FA_PLUS " Add Transition", appState.menu() == M::ADD_TRANSITION, [&] { appState.setMenu(M::ADD_TRANSITION); });
 
   _toolbarHeight = ImGui::GetWindowHeight();
   ImGui::End();
@@ -118,43 +114,7 @@ void drawCanvas(AppState &appState)
   if (leftClicked) {
     const bool inCanvas = topLeft.y < mousePos.y && mousePos.y < _canvasHeight;
     if (inCanvas) {
-      switch (appState.mode()) {
-      case AppState::Mode::SELECT:
-        if (!io.KeyCtrl) {
-          appState.clearManipulators();
-        }
-        if (auto pObj = appState.targetObject(mousePos)) {
-          auto man = pObj->createManipulator();
-          man->setFirstPos(mousePos);
-        } else {
-          appState.clearManipulators();
-        }
-        break;
-      case AppState::Mode::ADD_STATE:
-        tm.addUnconnectedState(_tempAddState);
-        appState.addState(_tempAddState, posMousePosAdjusted(mousePos));
-        break;
-      case AppState::Mode::ADD_TRANSITION:
-        if (auto pObj = appState.targetObject(mousePos); pObj && pObj->asState()) {
-          const auto &state = pObj->asState()->getState();
-          if (!_tempTransition) {
-            core::State dummyState{ randomId() };
-            appState.setStatePosition(dummyState, mousePos);
-            core::Transition tr{ state, core::Alphabet::Blank, dummyState, core::Alphabet::Blank, core::Tape::Dir::RIGHT };
-            auto dro = new ui::TransitionDrawObject(tr, &appState);
-            _tempTransition.reset(dro);
-          } else {
-            auto tr = _tempTransition->asTransition()->getTransition();
-            tr.setTo(state);
-            tm.addTransition(tr);
-            appState.addTransition(tr);
-            _tempTransition.reset();
-          }
-        } else {
-          _tempTransition.reset();
-        }
-        break;
-      }
+      canvasLeftMouseButtonClicked(appState, io);
     }
   }
 
@@ -166,32 +126,27 @@ void drawCanvas(AppState &appState)
   }
 
   if (appState.dragState.isDragging) {
-    if (!_tempTransition) {
-      auto mans = appState.getManipulators();
-      for (auto m : mans) {
-        m->setNextPos(mousePos, mousePos - appState.dragState.dragStartPos);
-      }
-      appState.dragState.dragStartPos = mousePos;
-    }
-  }
-
-  if (_tempTransition) {
-    const auto &tr = _tempTransition->asTransition()->getTransition();
-    auto toState = tr.to();
-    appState.setStatePosition(toState, posMousePosAdjusted(mousePos));
-  }
-
-
-  if (appState.dragState.isDragging && !ImGui::IsMouseDown(0)) {
-    appState.dragState.isDragging = false;
     auto mans = appState.getManipulators();
     for (auto m : mans) {
-      m->setLastPos(mousePos);
+      m->setNextPos(mousePos, mousePos - appState.dragState.dragStartPos);
+    }
+    appState.dragState.dragStartPos = mousePos;
+  }
+
+  if (appState.dragState.isDragging && !ImGui::IsMouseDown(0)) {
+    if (!appState.dragState.isTransitionConnecting()) {
+      appState.dragState.isDragging = false;
+      auto mans = appState.getManipulators();
+      for (auto m : mans) {
+        m->setLastPos(mousePos);
+      }
     }
   }
 
   // Draw machine
   appState.drawObjects();
+
+  drawTempTransition(appState);
 
   handleToolbar(appState);
 
@@ -208,29 +163,83 @@ void handleToolbar(AppState &appState)
   ImGuiIO &io = ImGui::GetIO();
   ImDrawList *dr = ImGui::GetWindowDrawList();
   const auto &tm = appState.tm();
-  switch (appState.mode()) {
-  case AppState::Mode::SELECT:
+  switch (appState.menu()) {
+  case AppState::Menu::SELECT:
     break;
-  case AppState::Mode::ADD_STATE:
+  case AppState::Menu::ADD_STATE:
     if (1) {
       auto pos = io.MousePos;
-      ImU32 orange = IM_COL32(255, 165, 0, 255);
       auto s = tm.nextUniqueStateName();
       auto t = tm.states().size() == 0 ? core::State::Type::START : core::State::Type::NORMAL;
-      ui::StateDrawObject::drawState(_tempAddState = core::State(s, t), posMousePosAdjusted(pos), orange, true);
-      //std::cout << "handleToolbar " << s << "\n";
+      ui::StateDrawObject::drawState(appState._tempAddState = core::State(s, t), posOffset(pos), Colors::orange, true);
     }
     break;
-  case AppState::Mode::ADD_TRANSITION:
-    if (_tempTransition) {
-      auto pos = io.MousePos;
-      ImU32 orange = IM_COL32(255, 165, 0, 255);
-      _tempTransition->draw();
-      if (auto pObj = appState.targetObject(pos); pObj && pObj->asState()) {
-        auto st{pObj->asState()->getState()};
-        ui::StateDrawObject::drawState(st, pObj->centerPoint(), orange, false);
+  case AppState::Menu::ADD_TRANSITION:
+    //appState.dragState.mode = DragState::Mode::TRANSITION_CONNECT_END;
+    break;
+  }
+}
+
+void drawTempTransition(AppState &appState)
+{
+  ImGuiIO &io = ImGui::GetIO();
+  if (appState.dragState.isTransitionConnecting()) {
+    auto pos = io.MousePos;
+    if (auto pObj = appState.targetObject(pos); pObj && pObj->asState()) {
+      ui::StateDrawObject::drawState(pObj->asState()->getState(), pObj->centerPoint(), Colors::maroon, false);
+    }
+  }
+}
+
+void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
+{
+  const auto &mousePos = io.MousePos;
+  bool addingTransition = false;
+  switch (appState.menu()) {
+  case AppState::Menu::SELECT:
+    if (!appState.dragState.isDragging) {
+      if (!io.KeyCtrl) {
+        appState.clearManipulators();
+      }
+      if (auto pObj = appState.targetObject(mousePos)) {
+        auto man = pObj->createManipulator();
+        man->setFirstPos(mousePos);
+      } else {
+        appState.clearManipulators();
       }
     }
     break;
+  case AppState::Menu::ADD_STATE:
+    appState.addState(appState._tempAddState, posOffset(mousePos));
+    break;
+  case AppState::Menu::ADD_TRANSITION:
+    addingTransition = true;
+    break;
+  }
+  if (auto pObj = appState.targetObject(mousePos); pObj) {
+    if (pObj->asState()) {
+      const auto &state = pObj->asState()->getState();
+      if (addingTransition && appState.dragState.mode == DragState::Mode::NONE) {
+        core::State dummyState{ nextRandomId() };
+        appState.setStatePosition(dummyState, mousePos);
+        core::Transition tr{ state, dummyState, core::Alphabet::Blank, core::Alphabet::Blank, core::Tape::Dir::RIGHT };
+        auto dro = appState.addTransition(tr);
+        auto man = dro->createManipulator();
+        man->setFirstPos(mousePos);
+        appState.dragState.isDragging = true;
+        appState.dragState.dragStartPos = mousePos;
+      } else if (appState.dragState.mode != DragState::Mode::NONE) {
+        for (auto m : appState.getManipulators()) {
+          m->setLastPos(mousePos);
+        }
+        appState.dragState.isDragging = false;
+      }
+    }
+  } else {
+    auto mans = appState.getManipulators();
+    for (auto m : mans) {
+      m->setLastPos(mousePos);
+    }
+    appState.dragState.isDragging = false;
   }
 }

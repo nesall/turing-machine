@@ -33,7 +33,8 @@ namespace core {
     enum class Type { START, ACCEPT, REJECT, NORMAL };
 
     State() = default;
-    State(std::string name, Type type = Type::NORMAL) : name_(name), type_(type) {}
+    State(const State &) = default;
+    explicit State(std::string name, Type type = Type::NORMAL) : name_(name), type_(type) {}
     bool operator<(const State &other) const { return name_ < other.name_; }
     bool operator==(const State &other) const { return name_ == other.name_; }
     std::string name() const { return name_; }
@@ -49,14 +50,18 @@ namespace core {
 
   class Transition {
     State from_;
-    char readSymbol_;
     State to_;
+    char readSymbol_;
     char writeSymbol_;
     Tape::Dir direction_;
     
   public:
-    Transition(const State& from, char readSymbol, const State& to, char writeSymbol, Tape::Dir direction)
+    Transition(const State& from, const State &to, char readSymbol, char writeSymbol, Tape::Dir direction)
         : from_(from), readSymbol_(readSymbol), to_(to), writeSymbol_(writeSymbol), direction_(direction) {}
+
+    bool operator==(const Transition &rhs) const { 
+      return from_ == rhs.from_ && to_ == rhs.to_ && readSymbol_ == rhs.readSymbol_ && writeSymbol_ == rhs.writeSymbol_ && direction_ == rhs.direction_;
+    }
 
     // Getters
     const State &from() const { return from_; }
@@ -89,13 +94,11 @@ namespace core {
     void removeState(State st);
     bool hasTransitionsFrom(State st) const;
     void addTransition(const Transition &tr);
+    void removeTransition(const Transition &tr);
     std::vector<State> unconnectedStates() const { return unconnectedStates_; }
 
     std::string toJson() const;
     void fromJson(const std::string &json);
-
-  private:
-    void addTransition(const State &from, char readSymbol, const State &to, char writeSymbol, Tape::Dir dir);
 
   private:
     std::vector<State> unconnectedStates_;

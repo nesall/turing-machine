@@ -10,9 +10,6 @@ namespace {
   const float _stateRadius = 30.0f;
 } // anonymous namespace
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 #if 0
 
@@ -146,22 +143,27 @@ std::optional<core::Transition> ui::DrawObject::getTransition() const
 void ui::StateDrawObject::drawState(const core::State &state, ImVec2 pos, ImU32 clr, bool temp)
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
-  ImU32 textClr = IM_COL32(0, 0, 0, 255);
+  ImU32 textClr = Colors::black;
   if (!temp) {
     auto  fill = IM_COL32(0, 128, 255, 255);
     if (state.isAccept()) {
-      fill = IM_COL32(0, 255, 0, 255);
+      fill = Colors::green;
     } else if (state.isReject()) {
-      fill = IM_COL32(255, 0, 0, 255);
+      fill = Colors::red;
     } else if (state.isStart()) {
       fill = IM_COL32(102, 178, 255, 255);
     }
     dr->AddCircleFilled(pos, _stateRadius, fill);
-    textClr = IM_COL32(255, 255, 255, 255);
+    textClr = Colors::white;
   }
   dr->AddCircle(pos, _stateRadius, clr, 64, 2.0f);
   ImVec2 sz = ImGui::CalcTextSize(state.name().c_str());
   dr->AddText(ImVec2(pos.x - sz.x / 2, pos.y - sz.y / 2), textClr, state.name().c_str());
+}
+
+float ui::StateDrawObject::radius()
+{
+  return _stateRadius;
 }
 
 ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core::Transition &trans, ImVec2 posFrom, ImVec2 posTo, const TransitionStyle &style)
@@ -201,7 +203,7 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core:
   }
 
   // Alternate direction for multiple transitions
-  float direction = (style.transitionIndex % 2 == 0) ? 1.0f : -1.0f;
+  float direction = 1.f;// (style.transitionIndex % 2 == 0) ? 1.0f : -1.0f;
   ImVec2 control = ImVec2(mid.x + perp.x * arcOffset * direction,
     mid.y + perp.y * arcOffset * direction);
 
@@ -213,9 +215,9 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core:
   );
 
   // Set control points BEFORE drawing
-  controlPoints.startPoint = edgeFrom;
-  controlPoints.midPoint = bezierMid;
-  controlPoints.endPoint = edgeTo;
+  controlPoints.points[TransitionControlPoints::START] = edgeFrom;
+  controlPoints.points[TransitionControlPoints::MID] = bezierMid;
+  controlPoints.points[TransitionControlPoints::END] = edgeTo;
   controlPoints.isValid = true;
 
   // Draw quadratic Bezier arc from edge to edge
@@ -266,9 +268,9 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawSelfLoop(const core::T
   );
 
   // Set control points
-  controlPoints.startPoint = startPoint;
-  controlPoints.midPoint = midPoint;
-  controlPoints.endPoint = endPoint;
+  controlPoints.points[TransitionControlPoints::START] = startPoint;
+  controlPoints.points[TransitionControlPoints::MID] = midPoint;
+  controlPoints.points[TransitionControlPoints::END] = endPoint;
   controlPoints.isValid = true;
 
   // Draw loop circle
@@ -369,7 +371,7 @@ ui::StateDrawObject::StateDrawObject(const core::State &state, AppState *app)
 void ui::StateDrawObject::draw() const
 {
   ImVec2 pos = appState_->statePosition(state_);
-  drawState(state_, pos, IM_COL32(0, 0, 0, 255));
+  drawState(state_, pos, Colors::black);
 }
 
 ui::Rect ui::StateDrawObject::boundingRect() const
@@ -403,21 +405,26 @@ ui::TransitionDrawObject::TransitionDrawObject(const core::Transition &trans, Ap
 
 void ui::TransitionDrawObject::draw() const
 {
-  ImVec2 posFrom = appState_->statePosition(transition_.from());
-  ImVec2 posTo = appState_->statePosition(transition_.to());
-  controlPoints_ = drawTransition(transition_, posFrom, posTo);
-  if (controlPoints_.isValid) {
-    ImDrawList *drawList = ImGui::GetWindowDrawList();
-    const float handleRadius = 4.0f;
-    ImU32 handleColor = IM_COL32(255, 0, 255, 255);
-    drawList->AddCircleFilled(controlPoints_.startPoint, handleRadius, handleColor);
-    drawList->AddCircleFilled(controlPoints_.midPoint, handleRadius, handleColor);
-    drawList->AddCircleFilled(controlPoints_.endPoint, handleRadius, handleColor);
+  if (isVisible()) {
+    ImVec2 posFrom = appState_->statePosition(transition_.from());
+    ImVec2 posTo = appState_->statePosition(transition_.to());
+    controlPoints_ = drawTransition(transition_, posFrom, posTo, style_);
+    if (controlPoints_.isValid) {
+      ImDrawList *drawList = ImGui::GetWindowDrawList();
+      const float handleRadius = 4.0f;
+      ImU32 handleColor = Colors::magenta;
+      drawList->AddCircleFilled(controlPoints_.points[TransitionControlPoints::START], handleRadius, handleColor);
+      drawList->AddCircleFilled(controlPoints_.points[TransitionControlPoints::MID], handleRadius, handleColor);
+      drawList->AddCircleFilled(controlPoints_.points[TransitionControlPoints::END], handleRadius, handleColor);
+    }
   }
 }
 
 bool ui::TransitionDrawObject::containsPoint(float x, float y) const
 {
+  if (controlPoints_.isValid) {
+    return controlPoints_.hitTest(x, y).has_value();
+  }
   return false;
 }
 
@@ -450,7 +457,7 @@ ui::TransitionLabelDrawObject::TransitionLabelDrawObject(const ui::TransitionDra
 ImVec2 ui::TransitionLabelDrawObject::getAutoPosition() const
 {
   auto controlPoints = tdo_->controlPoints();
-  return controlPoints.midPoint;
+  return controlPoints.points[TransitionControlPoints::MID];
 }
 
 ImVec2 ui::TransitionLabelDrawObject::getFinalPosition() const

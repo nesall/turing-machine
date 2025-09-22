@@ -169,16 +169,16 @@ void core::TuringMachine::fromJson(const std::string &jsonStr)
     State to = stateFromJson(tr.at("to"));
     char writeSymbol = tr.at("writeSymbol").get<std::string>()[0];
     Tape::Dir dir = strToDir(tr.at("direction").get<std::string>());
-    transitions_.emplace_back(from, readSymbol, to, writeSymbol, dir);
+    transitions_.emplace_back(from, to, readSymbol, writeSymbol, dir);
   }
-}
-
-void core::TuringMachine::addTransition(const State &from, char readSymbol, const State &to, char write, Tape::Dir move)
-{
-  addTransition({ from, readSymbol, to, write, move });
 }
 
 void core::TuringMachine::addTransition(const Transition &tr)
 {
   transitions_.push_back(tr);
+}
+
+void core::TuringMachine::removeTransition(const Transition &tr)
+{
+  transitions_.erase(std::remove(transitions_.begin(), transitions_.end(), tr), transitions_.end());
 }
