@@ -14,7 +14,7 @@ namespace ui {
   public:
     Manipulator(ui::DrawObject *o) : dro_(o) {}
     virtual ~Manipulator() = default;
-    virtual void draw() = 0;
+    virtual void draw(ImDrawList *dr) = 0;
     virtual bool isActive() const { return active_; }
 
     virtual void setFirstPos(float x, float y) = 0;
@@ -37,7 +37,7 @@ namespace ui {
   class StateManipulator : public Manipulator {
   public:
     StateManipulator(ui::DrawObject *p) : Manipulator(p) {}
-    void draw() override;
+    void draw(ImDrawList *dr) override;
 
     void setFirstPos(float x, float y) override;
     void setNextPos(float x, float y, const ImVec2 &offset) override;
@@ -51,7 +51,7 @@ namespace ui {
   public:
     TransitionManipulator(ui::DrawObject *p);
     ~TransitionManipulator();
-    void draw() override;
+    void draw(ImDrawList *dr) override;
     void setFirstPos(float x, float y) override;
     void setNextPos(float x, float y, const ImVec2 &offset) override;
     void setLastPos(float x, float y) override;
@@ -67,7 +67,7 @@ namespace ui {
   public:
     TransitionLabelManipulator(ui::DrawObject *p) : Manipulator(p) {}
 
-    void draw() override;
+    void draw(ImDrawList *dr) override;
     void setFirstPos(float x, float y) override;
     void setNextPos(float x, float y, const ImVec2 &offset) override;
     void setLastPos(float x, float y) override;

@@ -50,7 +50,7 @@ namespace ui {
   public:
     DrawObject(AppState *a) : appState_(a) {}
     virtual ~DrawObject() = default;
-    virtual void draw() const = 0;
+    virtual void draw(ImDrawList *dr) const = 0;
     virtual bool containsPoint(float x, float y) const { return boundingRect().contains(x, y); }
     virtual utils::Rect boundingRect() const = 0;
     virtual ImVec2 centerPoint() const { return boundingRect().center(); }
@@ -85,7 +85,7 @@ namespace ui {
     StateDrawObject(const core::State &state, AppState *app);
     const core::State &getState() const { return state_; }
 
-    void draw() const override;
+    void draw(ImDrawList *dr) const override;
     utils::Rect boundingRect() const override;
     void translate(const ImVec2 &delta) override;
     ui::Manipulator *getOrCreateManipulator(bool bCreate) override;
@@ -110,7 +110,7 @@ namespace ui {
     TransitionStyle transitionStyle() const { return style_; }
     void setTransitionStyle(const TransitionStyle &style) { style_ = style; }
 
-    void draw() const override;
+    void draw(ImDrawList *dr) const override;
     bool containsPoint(float x, float y) const override;
     utils::Rect boundingRect() const override;
     void translate(const ImVec2 &delta) override;
@@ -145,7 +145,7 @@ namespace ui {
 
     const ui::TransitionDrawObject *transitionDrawObject() const { return tdo_; }
 
-    void draw() const override;
+    void draw(ImDrawList *dr) const override;
     utils::Rect boundingRect() const override;
     void translate(const ImVec2 &delta) override;
     ui::Manipulator *getOrCreateManipulator(bool bCreate) override;

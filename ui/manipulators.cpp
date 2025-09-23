@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <memory>
+#include <cstdlib>
 
 
 namespace {
@@ -36,9 +37,8 @@ bool ui::Manipulator::handleMouse(const ImGuiIO &io, ImDrawList *drawList)
 
 
 
-void ui::StateManipulator::draw()
+void ui::StateManipulator::draw(ImDrawList *dr)
 {
-  ImDrawList *dr = ImGui::GetWindowDrawList();
   auto rc = dro_->boundingRect();
   dr->AddRect(ImVec2(rc.x, rc.y), ImVec2(rc.x + rc.w, rc.y + rc.h), IM_COL32(255, 0, 0, 255));
 }
@@ -76,9 +76,8 @@ ui::TransitionManipulator::~TransitionManipulator()
   std::cout << "TransitionManipulator::dtor\n";
 }
 
-void ui::TransitionManipulator::draw()
+void ui::TransitionManipulator::draw(ImDrawList *dr)
 {
-  ImDrawList *dr = ImGui::GetWindowDrawList();
   if (imp->iPoint.has_value()) {
     auto drt = dro_->asTransition();
     auto pt = drt->controlPoints().points[imp->iPoint.value()];
@@ -266,7 +265,7 @@ void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const 
   const float comfortableMax = 150.0f;
 
   // Apply soft limiting for both positive and negative values
-  if (abs(style.arcHeight) > comfortableMax) {
+  if (std::abs(style.arcHeight) > comfortableMax) {
     float sign = (style.arcHeight >= 0) ? 1.0f : -1.0f;
     float excess = abs(style.arcHeight) - comfortableMax;
     float maxExcess = maxMagnitude - comfortableMax;
@@ -278,7 +277,7 @@ void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const 
   style.arcHeight = std::clamp(style.arcHeight, -maxMagnitude, maxMagnitude);
 
   // Optional: Snap to "straight line" when very close to zero
-  if (abs(style.arcHeight) < 8.0f) {
+  if (std::abs(style.arcHeight) < 8.0f) {
     style.arcHeight = 0.0f; // Perfectly straight line
   }
 
@@ -315,9 +314,8 @@ void ui::TransitionManipulator::handleSelfLoopManipulation(float x, float y, con
 //------------------------------------------------------------------------------------------
 
 
-void ui::TransitionLabelManipulator::draw()
+void ui::TransitionLabelManipulator::draw(ImDrawList *dr)
 {
-  ImDrawList *dr = ImGui::GetWindowDrawList();
   auto rc = dro_->boundingRect();
   dr->AddRect(ImVec2(rc.x - 1.5f, rc.y - 1.f), ImVec2(rc.x + rc.w + 2.f, rc.y + rc.h + 2.f), Colors::red);
   auto drl = dro_->asTransitionLabel();

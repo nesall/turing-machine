@@ -17,7 +17,7 @@ ui::StateDrawObject::StateDrawObject(const core::State &state, AppState *app)
 {
 }
 
-void ui::StateDrawObject::draw() const
+void ui::StateDrawObject::draw(ImDrawList *) const
 {
   ImVec2 pos = appState_->statePosition(state_);
   drawState(state_, pos, Colors::black);
@@ -150,70 +150,54 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawSelfLoop(const core::T
   TransitionControlPoints controlPoints;
 
   // Position loop based on transition index to avoid overlap
-  float angle = (style.transitionIndex * 60.0f) * (M_PI / 180.0f); // 60 degrees apart
-  float loopDistance = _stateRadius + style.selfLoopOffset;
+  const float angle = (style.transitionIndex * 60.0f) * (M_PI / 180.0f); // 60 degrees apart
 
-  ImVec2 loopCenter = ImVec2(
-    pos.x + cosf(angle) * loopDistance,
-    pos.y + sinf(angle) * loopDistance
-  );
-
-  // Calculate control points for self-loop
-  // Start point: where loop connects to state
+  const float rate = 0.125f;
   ImVec2 startPoint = ImVec2(
-    pos.x + cosf(angle - M_PI * 0.25f) * _stateRadius,
-    pos.y + sinf(angle - M_PI * 0.25f) * _stateRadius
+    pos.x + cosf(angle - M_PI * rate) * _stateRadius,
+    pos.y + sinf(angle - M_PI * rate) * _stateRadius
   );
-
-  // End point: where loop returns to state  
   ImVec2 endPoint = ImVec2(
-    pos.x + cosf(angle + M_PI * 0.25f) * _stateRadius,
-    pos.y + sinf(angle + M_PI * 0.25f) * _stateRadius
+    pos.x + cosf(angle + M_PI * rate) * _stateRadius,
+    pos.y + sinf(angle + M_PI * rate) * _stateRadius
   );
 
-  // Mid point: opposite side of loop (good for label and user interaction)
-  ImVec2 midPoint = ImVec2(
-    loopCenter.x + cosf(angle + M_PI) * style.selfLoopRadius,
-    loopCenter.y + sinf(angle + M_PI) * style.selfLoopRadius
-  );
+  //// TODO: correct mid point calculation, let it be farther by float H=10.f 
+  //ImVec2 mid = ImVec2(
+  //  (startPoint.x + endPoint.x) * 0.5f,
+  //  (startPoint.y + endPoint.y) * 0.5f
+  //);
 
-  // Set control points
-  controlPoints.points[TransitionControlPoints::START] = startPoint;
-  controlPoints.points[TransitionControlPoints::MID] = midPoint;
-  controlPoints.points[TransitionControlPoints::END] = endPoint;
-  controlPoints.isValid = true;
+  //float dx = endPoint.x - startPoint.x;
+  //float dy = endPoint.y - startPoint.y;
+  //float L = sqrtf(dx * dx + dy * dy);
+  //if (L < 1e-6f) L = 1.0f;
 
-  // Draw loop circle
-  dr->AddCircle(loopCenter, style.selfLoopRadius, style.color, 32, style.lineThickness);
+  //ImVec2 perp = ImVec2(dy / L, -dx / L);
+  //float H = 40.f;
 
-  // Arrow position on the loop
-  ImVec2 arrowPos = ImVec2(
-    loopCenter.x + cosf(angle + M_PI * 0.25f) * style.selfLoopRadius,
-    loopCenter.y + sinf(angle + M_PI * 0.25f) * style.selfLoopRadius
-  );
+  //ImVec2 midPoint = ImVec2(
+  //  mid.x + perp.x * H,
+  //  mid.y + perp.y * H
+  //);
 
-  // Draw arrowhead
-  ImVec2 arrowDir = ImVec2(cosf(angle + M_PI * 0.25f), sinf(angle + M_PI * 0.25f));
-  drawArrowheadAtPoint(arrowPos, arrowDir, style);
+  //// Set control points
+  //controlPoints.points[TransitionControlPoints::START] = startPoint;
+  //controlPoints.points[TransitionControlPoints::MID] = midPoint;
+  //controlPoints.points[TransitionControlPoints::END] = endPoint;
+  //controlPoints.isValid = true;
 
-  // Label position (use midPoint for consistency)
-  auto label = std::format("{}; {}, {}", trans.readSymbol(), trans.writeSymbol(),
-    trans.direction() == core::Tape::Dir::LEFT ? "L" : "R");
-  ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+  //dr->AddBezierQuadratic(startPoint, midPoint, endPoint, style.color, style.lineThickness);
 
-  // Place label near midPoint but offset outward for readability
-  ImVec2 labelOffset = ImVec2(cosf(angle + M_PI) * 15.0f, sinf(angle + M_PI) * 15.0f);
-  ImVec2 labelPos = ImVec2(midPoint.x + labelOffset.x - textSize.x / 2,
-    midPoint.y + labelOffset.y - textSize.y / 2);
+  //ImVec2 arrowPos = endPoint;
 
-  // Background for readability
-  dr->AddRectFilled(ImVec2(labelPos.x - 2, labelPos.y - 1),
-    ImVec2(labelPos.x + textSize.x + 2, labelPos.y + textSize.y + 1),
-    IM_COL32(255, 255, 255, 200));
+  //// Draw arrowhead
+  //ImVec2 arrowDir = ImVec2(cosf(angle + M_PI * rate), sinf(angle + M_PI * rate));
+  //drawArrowheadAtPoint(arrowPos, arrowDir, style);
 
-  dr->AddText(labelPos, style.textColor, label.c_str());
+  //return controlPoints;
 
-  return controlPoints;
+  return drawTransition(trans, startPoint, endPoint, style);
 }
 
 void ui::TransitionDrawObject::drawArrowhead(ImVec2 tipPos, ImVec2 controlPos, const TransitionStyle &style)
@@ -251,7 +235,7 @@ ui::TransitionDrawObject::TransitionDrawObject(const core::Transition &trans, Ap
 {
 }
 
-void ui::TransitionDrawObject::draw() const
+void ui::TransitionDrawObject::draw(ImDrawList *dr) const
 {
   if (isVisible()) {
     ImVec2 posFrom = appState_->statePosition(transition_.from());
@@ -262,12 +246,11 @@ void ui::TransitionDrawObject::draw() const
     }
     controlPoints_ = drawTransition(transition_, posFrom, posTo, style);
     if (controlPoints_.isValid) {
-      ImDrawList *drawList = ImGui::GetWindowDrawList();
       const float handleRadius = 4.0f;
       ImU32 handleColor = Colors::magenta;
-      drawList->AddCircleFilled(controlPoints_.points[TransitionControlPoints::START], handleRadius, handleColor);
-      drawList->AddCircleFilled(controlPoints_.points[TransitionControlPoints::MID], handleRadius, handleColor);
-      drawList->AddCircleFilled(controlPoints_.points[TransitionControlPoints::END], handleRadius, handleColor);
+      dr->AddCircleFilled(controlPoints_.points[TransitionControlPoints::START], handleRadius, handleColor);
+      dr->AddCircleFilled(controlPoints_.points[TransitionControlPoints::MID], handleRadius, handleColor);
+      dr->AddCircleFilled(controlPoints_.points[TransitionControlPoints::END], handleRadius, handleColor);
     }
   }
 }
@@ -341,10 +324,8 @@ void ui::TransitionLabelDrawObject::resetToAutoPosition()
   hasManualPosition_ = false;
 }
 
-void ui::TransitionLabelDrawObject::draw() const
+void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
 {
-  ImDrawList *dr = ImGui::GetWindowDrawList();
-
   float t = 0.5f;
   auto pos = getFinalPosition();
 
