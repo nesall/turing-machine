@@ -106,6 +106,7 @@ namespace ui {
   public:
     TransitionDrawObject(const core::Transition &trans, AppState *app);
     const core::Transition &getTransition() const { return transition_; }
+    core::Transition &getTransition() { return transition_; }
     TransitionControlPoints controlPoints() const { return controlPoints_; }
     TransitionStyle transitionStyle() const { return style_; }
     void setTransitionStyle(const TransitionStyle &style) { style_ = style; }
@@ -150,6 +151,21 @@ namespace ui {
     void translate(const ImVec2 &delta) override;
     ui::Manipulator *getOrCreateManipulator(bool bCreate) override;
     TransitionLabelDrawObject *asTransitionLabel() override { return this; }
+  };
+
+
+  class TransitionLabelEditor {
+  private:
+    bool showDialog_ = false;
+    core::Transition *editingTransition_ = nullptr;
+    char readSymbol_[2] = "";
+    char writeSymbol_[2] = "";
+    int direction_ = 0;
+  public:
+    void openEditor(core::Transition *trans);
+    void render();
+  private:
+    void applyChanges();
   };
 
 } // namespace ui

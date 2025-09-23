@@ -43,7 +43,7 @@ namespace core {
 
   class State {
   public:
-    enum class Type { START, ACCEPT, REJECT, NORMAL };
+    enum class Type { TEMP, START, ACCEPT, REJECT, NORMAL };
 
     State() = default;
     State(const State &) = default;
@@ -55,6 +55,7 @@ namespace core {
     bool isAccept() const { return type_ == Type::ACCEPT; }
     bool isReject() const { return type_ == Type::REJECT; }
     bool isStart() const { return type_ == Type::START; }
+    bool isTemporary() const { return type_ == Type::TEMP; }
   
   private:
     std::string name_;
@@ -109,6 +110,7 @@ namespace core {
     bool hasTransitionsFrom(State st) const;
     void addTransition(const Transition &tr);
     void removeTransition(const Transition &tr);
+    void updateTransition(const Transition &o, const Transition &n);
     std::vector<State> unconnectedStates() const { return unconnectedStates_; }
 
     std::string toJson() const;

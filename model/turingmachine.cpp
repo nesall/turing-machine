@@ -232,3 +232,11 @@ void core::TuringMachine::removeTransition(const Transition &tr)
 {
   transitions_.erase(std::remove(transitions_.begin(), transitions_.end(), tr), transitions_.end());
 }
+
+void core::TuringMachine::updateTransition(const Transition &o, const Transition &n)
+{
+  auto it = std::find(transitions_.begin(), transitions_.end(), o);
+  if (it != transitions_.end()) {
+    *it = n;
+  }
+}

@@ -147,15 +147,17 @@ void ui::TransitionManipulator::setLastPos(float x, float y)
   auto drt = dro_->asTransition();
   if (auto pObj = appState.targetObject({x, y}); pObj && pObj->asState()) {
     const auto &state = pObj->asState()->getState();
+    auto old{ drt->transition_ };
     if (appState.dragState.mode == DragState::Mode::TRANSITION_CONNECT_START) {
       drt->transition_.setFrom(state);
     } else {
       drt->transition_.setTo(state);
     }
+    appState.tm().updateTransition(old, drt->transition_);
   } else {
     auto tr{ *imp->origTransition_ };
     imp->origTransition_.reset();
-    if (tr.to().name().starts_with("_random")) {
+    if (tr.to().isTemporary()) {
       appState.removeTransition(drt->transition_);
     } else {
       drt->transition_.setFrom(tr.from());
@@ -173,14 +175,19 @@ void ui::TransitionManipulator::startReconnection(DragState::Mode mode, float x,
   auto &dragState = appState.dragState;
   dragState.mode = mode;
   auto drt = dro_->asTransition();
-  const auto &tr = drt->getTransition();
   std::cout << "TransitionManipulator::startReconnection " << this << "\n";
+  const auto &tr = drt->getTransition();
   imp->origTransition_ = std::make_unique<core::Transition>(tr);
-  core::State dummyState{ nextRandomId() };
-  if (mode == DragState::Mode::TRANSITION_CONNECT_START) {
-    drt->transition_.setFrom(dummyState);
-  } else {
-    drt->transition_.setTo(dummyState);
+  core::State dummyState;
+  if (tr.from().isTemporary()) dummyState = tr.from();
+  else if (tr.to().isTemporary()) dummyState = tr.to();
+  else {
+    dummyState = core::State{ nextRandomId(), core::State::Type::TEMP };
+    if (mode == DragState::Mode::TRANSITION_CONNECT_START) {
+      drt->transition_.setFrom(dummyState);
+    } else {
+      drt->transition_.setTo(dummyState);
+    }
   }
   appState.setStatePosition(dummyState, { x, y });
 }

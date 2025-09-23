@@ -53,11 +53,13 @@ json AppSerializer::serialize(const AppState &appState)
   // State positions
   j["ui"]["statePositions"] = json::object();
   for (const auto &state : appState.tm().states()) {
-    ImVec2 pos = appState.statePosition(state);
+    ImVec2 pos = appState.statePosition(state) + appState.scrollXY() - appState.canvasOrigin();
     j["ui"]["statePositions"][state.name()] = {
         {"x", pos.x}, {"y", pos.y}
     };
   }
+
+  // TODO: handle labels, transition arcHeight etc.
 
   return j;
 }
@@ -121,6 +123,7 @@ bool AppSerializer::saveToFile(const AppState &appState, const std::string &file
     json j = serialize(appState);
     std::ofstream file(filepath);
     file << j.dump(2);
+    file.close();
     std::cout << "Saved to: " << filepath << std::endl;
     return true;
   } catch (const std::exception &e) {
@@ -193,15 +196,16 @@ void AppSerializer::loadFrFileWithDialog(const AppState &appState)
 
 void AppSerializer::rebuildDrawObjects(AppState &appState)
 {
-  appState.clearManipulators();
+  //appState.clearManipulators();
 
-  for (const auto &state : appState.tm().states()) {
-    appState.addState(state, ImVec2(100, 100));
-  }
+  //for (const auto &state : appState.tm().states()) {
+  //  appState.addState(state, ImVec2(100, 100));
+  //}
 
-  for (const auto &transition : appState.tm().transitions()) {
-    appState.addTransition(transition);
-  }
+  //for (const auto &transition : appState.tm().transitions()) {
+  //  appState.addTransition(transition);
+  //}
+  appState.rebuildDrawObjectsFromTM();
 }
 
 std::string AppSerializer::getCurrentTimestamp()

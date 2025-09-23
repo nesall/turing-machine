@@ -10,9 +10,10 @@
 #include <imgui.h>
 #include <string>
 #include <format>
-#include <algorithm>
+#include <iostream>
 #include <cassert>
 #include <chrono>
+#include <optional>
 #include <array>
 
 
@@ -24,7 +25,11 @@ namespace {
   float _canvasHeight = 0;
   std::string _statusMessage;
   std::chrono::steady_clock::time_point _statusTime;
+#ifdef NO_FILEBROWSER
   std::array<char, 255> _fnameBuffer;
+#else
+  std::optional<bool> _fileSaving;
+#endif
 
   void styledButton(const char *label, bool active, bool enabled, std::function<void()> onClick) {
     if (active) {
@@ -47,31 +52,32 @@ namespace {
 
 
   // Add to AppState or create TapeEditor class
-  struct TapeEditor {
-    bool isEditing = false;
-    int editingIndex = 0;
-    char editBuffer[2] = "";
-
+  class TapeEditor {
+    bool isEditing_ = false;
+    int editingIndex_ = 0;
+    char editBuffer_[2] = "";
+  public:
     void startEdit(int tapeIndex, char currentValue) {
-      isEditing = true;
-      editingIndex = tapeIndex;
-      editBuffer[0] = (currentValue == '\0') ? '_' : currentValue;
-      editBuffer[1] = '\0';
+      isEditing_ = true;
+      editingIndex_ = tapeIndex;
+      editBuffer_[0] = (currentValue == '\0') ? '_' : currentValue;
+      editBuffer_[1] = '\0';
     }
-
     void cancelEdit() {
-      isEditing = false;
+      isEditing_ = false;
     }
-
     bool finishEdit(core::Tape &tape) {
-      if (isEditing) {
-        char newValue = (editBuffer[0] == '_') ? '\0' : editBuffer[0];
-        tape.writeAt(editingIndex, newValue);
-        isEditing = false;
+      if (isEditing_) {
+        char newValue = (editBuffer_[0] == '_') ? '\0' : editBuffer_[0];
+        tape.writeAt(editingIndex_, newValue);
+        isEditing_ = false;
         return true;
       }
       return false;
     }
+    bool isEditing() const { return isEditing_; }
+    int editingIndex() const { return editingIndex_; }
+    char *editBuffer() { return editBuffer_; }
   };
 
 } // anonymous namespace
@@ -93,39 +99,35 @@ void ui::render(AppState &appState)
   drawStatusBar(appState);
   drawTape(appState);
   drawCanvas(appState);
-
-  AppState::fileBrowser().Display();
 }
 
 void drawToolbar(AppState &appState)
 {
   ImGui::Begin("Toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
   ImGui::SetWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-  ImDrawList *dr = ImGui::GetWindowDrawList();
 
-  using M = AppState::Menu;
-  const auto &menu = appState.menu();
-  styledButton(ICON_FA_MOUSE_POINTER " Select", menu == M::SELECT, true, [&] { appState.setMenu(M::SELECT); });
-  ImGui::SameLine();
-  styledButton(ICON_FA_PLUS_CIRCLE " Add State", menu == M::ADD_STATE, true, [&] { appState.setMenu(M::ADD_STATE); });
-  ImGui::SameLine();
-  styledButton(ICON_FA_PLUS " Add Transition", menu == M::ADD_TRANSITION, true, [&] { appState.setMenu(M::ADD_TRANSITION); });
+  // Load button  
+  if (ImGui::Button(ICON_FA_FOLDER_OPEN "")) {
+#if NO_FILEBROWSER
+    if (AppSerializer::loadFromFile(appState)) {
+      _statusMessage = "Loaded successfully!";
+      _statusTime = std::chrono::steady_clock::now();
+    } else {
+      _statusMessage = "Load failed!";
+      _statusTime = std::chrono::steady_clock::now();
+    }
+#else
+    appState.fileBrowser().SetTitle("Open file");
+    appState.fileBrowser().SetTypeFilters({".txt", ".json"});
+    appState.fileBrowser().Open();
+    _fileSaving = false;
+#endif
+  }
 
-  ImGui::SameLine();
-  ImGui::Spacing();
-  ImGui::SameLine();
-
-  styledButton(ICON_FA_PLAY "", menu == M::RUNNING, true, [&] { appState.setMenu(M::RUNNING); });
-  ImGui::SameLine();
-  styledButton(ICON_FA_PAUSE "", menu == M::PAUSED, menu == M::RUNNING, [&] { appState.setMenu(M::PAUSED); });
-  ImGui::SameLine();
-  styledButton(ICON_FA_STOP "", false, menu == M::PAUSED || menu == M::RUNNING, [&] { appState.setMenu(M::SELECT); });
-
-  ImGui::SameLine();
-  ImGui::Spacing();
   ImGui::SameLine();
 
-  if (ImGui::Button("Save")) {
+  if (ImGui::Button(ICON_FA_SAVE "")) {
+#if NO_FILEBROWSER
     if (AppSerializer::saveToFile(appState, std::string{ _fnameBuffer.data() })) {
       _statusMessage = "Saved successfully!";
       _statusTime = std::chrono::steady_clock::now();
@@ -134,25 +136,19 @@ void drawToolbar(AppState &appState)
       _statusMessage = "Save failed!";
       _statusTime = std::chrono::steady_clock::now();
     }
+#else
+    appState.fileBrowser().SetTitle("Save file");
+    appState.fileBrowser().SetTypeFilters({ ".txt", ".json" });
+    appState.fileBrowser().Open();
+    _fileSaving = true;
+#endif
   }
 
+#if NO_FILEBROWSER
   ImGui::SameLine();
   if (ImGui::InputText("##edit", _fnameBuffer.data(), _fnameBuffer.size(),
     ImGuiInputTextFlags_CharsNoBlank | ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue)) {
     //editor.finishEdit(tape);
-  }
-
-  ImGui::SameLine();
-
-  // Load button  
-  if (ImGui::Button("Load")) {
-    if (AppSerializer::loadFromFile(appState)) {
-      _statusMessage = "Loaded successfully!";
-      _statusTime = std::chrono::steady_clock::now();
-    } else {
-      _statusMessage = "Load failed!";
-      _statusTime = std::chrono::steady_clock::now();
-    }
   }
 
   // Recent files dropdown
@@ -161,7 +157,7 @@ void drawToolbar(AppState &appState)
     auto recentFiles = AppSerializer::getSavedFiles();
     for (const auto &file : recentFiles) {
       if (ImGui::Selectable(file.c_str())) {
-        if (AppSerializer::loadFromFile(appState, file)) {          
+        if (AppSerializer::loadFromFile(appState, file)) {
           _statusMessage = "Loaded: " + file;
           _statusTime = std::chrono::steady_clock::now();
           std::fill(_fnameBuffer.begin(), _fnameBuffer.end(), '\0');
@@ -191,6 +187,66 @@ void drawToolbar(AppState &appState)
     }
     ImGui::EndCombo();
   }
+#else
+  AppState::fileBrowser().Display();
+  if (AppState::fileBrowser().HasSelected()) {
+    assert(_fileSaving.has_value());
+    auto path = AppState::fileBrowser().GetSelected();
+    if (_fileSaving.value()) {
+      if (AppSerializer::saveToFile(appState, std::string{ path.string() })) {
+        _statusMessage = "Saved successfully!";
+        _statusTime = std::chrono::steady_clock::now();
+        appState.setWindowTitle(path.filename().string());
+      } else {
+        _statusMessage = "Save failed!";
+        _statusTime = std::chrono::steady_clock::now();
+      }
+    } else {
+      if (AppSerializer::loadFromFile(appState, std::string{ path.string() })) {
+        _statusMessage = "Loaded successfully!";
+        _statusTime = std::chrono::steady_clock::now();
+      } else {
+        _statusMessage = "Load failed!";
+        _statusTime = std::chrono::steady_clock::now();
+      }
+    }
+    AppState::fileBrowser().ClearSelected();
+    _fileSaving = std::nullopt;
+  }
+#endif
+
+  ImGui::SameLine();
+  ImGui::Spacing();
+  ImGui::SameLine();
+
+  using M = AppState::Menu;
+  const auto &menu = appState.menu();
+  styledButton(ICON_FA_MOUSE_POINTER " Select", menu == M::SELECT, true, [&] { appState.setMenu(M::SELECT); });
+  ImGui::SameLine();
+  styledButton(ICON_FA_PLUS_CIRCLE " Add State", menu == M::ADD_STATE, true, [&] { appState.setMenu(M::ADD_STATE); });
+  ImGui::SameLine();
+  styledButton(ICON_FA_PLUS " Add Transition", menu == M::ADD_TRANSITION, true, [&] { appState.setMenu(M::ADD_TRANSITION); });
+
+  ImGui::SameLine();
+  ImGui::Spacing();
+  ImGui::SameLine();
+
+  const auto &mans = appState.getManipulators();
+  styledButton(std::format("{} {} ({})", ICON_FA_TRASH, "Delete Selected", mans.size()).c_str(), false, !mans.empty(), 
+    [&] {
+      appState.removeSelected();
+      appState.setMenu(M::SELECT);
+    });
+
+  ImGui::SameLine();
+  ImGui::Spacing();
+  ImGui::SameLine();
+
+  styledButton(ICON_FA_PLAY "", menu == M::RUNNING, true, [&] { appState.setMenu(M::RUNNING); });
+  ImGui::SameLine();
+  styledButton(ICON_FA_PAUSE "", menu == M::PAUSED, menu == M::RUNNING, [&] { appState.setMenu(M::PAUSED); });
+  ImGui::SameLine();
+  styledButton(ICON_FA_STOP "", false, menu == M::PAUSED || menu == M::RUNNING, [&] { appState.setMenu(M::SELECT); });
 
   _toolbarHeight = ImGui::GetWindowHeight();
   ImGui::End();
@@ -214,7 +270,7 @@ void drawTape(AppState &appState) {
   const int numCells = static_cast<int>(std::ceil(io.DisplaySize.x / cellSize));
   const ImVec2 startPos = ImGui::GetWindowPos() + ImVec2{ 0, 1 };
 
-  if (editor.isEditing) {
+  if (editor.isEditing()) {
     if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       editor.finishEdit(tape);
     } else if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -228,7 +284,7 @@ void drawTape(AppState &appState) {
     const ImVec2 cellPos = ImVec2(startPos.x + i * cellSize, startPos.y);
 
     ImU32 cellColor = middleCell ? Colors::blue : Colors::pastelBlue;
-    if (editor.isEditing && editor.editingIndex == tapeIndex) {
+    if (editor.isEditing() && editor.editingIndex() == tapeIndex) {
       cellColor = Colors::yellow;
     }
 
@@ -247,12 +303,12 @@ void drawTape(AppState &appState) {
         Colors::red);
     }
 
-    if (editor.isEditing && editor.editingIndex == tapeIndex) {
+    if (editor.isEditing() && editor.editingIndex() == tapeIndex) {
       ImGui::SetCursorScreenPos(ImVec2(cellPos.x + cellSize * 0.3f, cellPos.y + cellSize * 0.3f));
       ImGui::PushItemWidth(cellSize * 0.4f);
       ImGui::SetKeyboardFocusHere();
 
-      if (ImGui::InputText("##edit", editor.editBuffer, sizeof(editor.editBuffer),
+      if (ImGui::InputText("##edit", editor.editBuffer(), sizeof(editor.editBuffer()),
         ImGuiInputTextFlags_CharsNoBlank | ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue)) {
         editor.finishEdit(tape);
       }
@@ -277,6 +333,21 @@ void drawTape(AppState &appState) {
       if (ImGui::Selectable("##cell", false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(textSize.x, textSize.y))) {
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
           editor.startEdit(tapeIndex, c);
+        }
+      }
+      if (ImGui::IsItemFocused()) { 
+        if (ImGui::IsKeyPressed(ImGuiKey_F2)) {
+          editor.startEdit(tapeIndex, c);
+        } else {
+          ImGuiIO &io = ImGui::GetIO();
+          for (int k = 0; k < IM_ARRAYSIZE(io.KeysDown); k++) {
+            if (io.KeysDown[k]) {
+              //char keyPressed = static_cast<char>(k); // ImGuiKey index
+              if (k < 128 && 0 < k && std::isalnum(k))
+                editor.startEdit(tapeIndex, static_cast<char>(k));
+            }
+          }
+
         }
       }
 
@@ -362,6 +433,7 @@ void drawCanvas(AppState &appState)
   ImGui::SetWindowSize(size, ImGuiCond_Always);
   ImGui::BeginChild("ScrollableArea", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
   appState.setCanvasOrigin(ImGui::GetCursorScreenPos());
+  appState.setScrollXY({ ImGui::GetScrollX(), ImGui::GetScrollY() });
 
   ImVec2 mousePos = io.MousePos;
   const bool leftClicked = ImGui::IsMouseClicked(0); // 0 = left mouse button
@@ -479,7 +551,7 @@ void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
     if (pObj->asState()) {
       const auto &state = pObj->asState()->getState();
       if (addingTransition && appState.dragState.mode == DragState::Mode::NONE) {
-        core::State dummyState{ nextRandomId() };
+        core::State dummyState{ nextRandomId(), core::State::Type::TEMP };
         appState.setStatePosition(dummyState, mousePos);
         core::Transition tr{ state, dummyState, core::Tape::Blank, core::Tape::Blank, core::Tape::Dir::RIGHT };
         auto dro = appState.addTransition(tr);

@@ -80,16 +80,14 @@ void AppState::setCanvasOrigin(const ImVec2 &o)
   canvasOrigin_ = o;
 }
 
-ImVec2 AppState::screenToCanvas(const ImVec2 &mouse) const
+ImVec2 AppState::screenToCanvas(const ImVec2 &p) const
 {
-  return ImVec2(mouse.x - canvasOrigin_.x + ImGui::GetScrollX(),
-    mouse.y - canvasOrigin_.y + ImGui::GetScrollY());
+  return ImVec2(p.x - canvasOrigin_.x + scrollXY_.x, p.y - canvasOrigin_.y + scrollXY_.y);
 }
 
 ImVec2 AppState::canvasToScreen(const ImVec2 &p) const
 {
-  return ImVec2(canvasOrigin_.x - ImGui::GetScrollX() + p.x,
-    canvasOrigin_.y - ImGui::GetScrollY() + p.y);
+  return ImVec2(canvasOrigin_.x - scrollXY_.x + p.x, canvasOrigin_.y - scrollXY_.y + p.y);
 }
 
 utils::Rect AppState::canvasToScreen(const utils::Rect &p) const
@@ -123,6 +121,7 @@ void AppState::drawObjects(ImDrawList *dr)
       p->draw(dr);
     }
   }
+  transitionLabelEditor().render();
 }
 
 void AppState::clearDrawObjects()
@@ -134,6 +133,26 @@ void AppState::clearManipulators()
 {
   for (auto &obj : drawObjects_) {
     obj->removeManipulator();
+  }
+}
+
+void AppState::removeSelected()
+{
+  std::vector<core::State> statesToRemove;
+  std::vector<core::Transition> transToRemove;
+  for (auto &obj : drawObjects_) {
+    if (obj->getManipulator()) {
+      if (auto st = obj->asState())
+        statesToRemove.push_back(st->getState());
+      else if (auto tr = obj->asTransition())
+        transToRemove.push_back(tr->getTransition());
+    }
+  }
+  for (const auto &tr : transToRemove) {
+    removeTransition(tr);
+  }
+  for (const auto &st : statesToRemove) {
+    removeState(st);
   }
 }
 
@@ -175,4 +194,26 @@ ImGui::FileBrowser &AppState::fileBrowser()
 {
   static ImGui::FileBrowser fileDialog;
   return fileDialog;
+}
+
+void AppState::rebuildDrawObjectsFromTM()
+{
+  // Clear existing draw objects without affecting TM
+  drawObjects_.clear();
+  clearManipulators();
+
+  // Create DrawObjects for existing states (don't add to TM again)
+  for (const auto &state : tm_.states()) {
+    drawObjects_.emplace_back(std::make_unique<ui::StateDrawObject>(state, this));
+
+    // Set default position if not in position map
+    if (stateToPosition_.find(state) == stateToPosition_.end()) {
+      stateToPosition_[state] = screenToCanvas(ImVec2(100, 100));
+    }
+  }
+
+  // Create DrawObjects for existing transitions
+  for (const auto &transition : tm_.transitions()) {
+    drawObjects_.emplace_back(std::make_unique<ui::TransitionDrawObject>(transition, this));
+  }
 }

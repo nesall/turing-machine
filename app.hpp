@@ -28,6 +28,8 @@ private:
   ImVec2 canvasOrigin_;
   std::vector<std::unique_ptr<ui::DrawObject>> drawObjects_;
   std::string windowTitle_;
+  ui::TransitionLabelEditor labelEditor_;
+  ImVec2 scrollXY_;
 
 public:
   DragState dragState;
@@ -43,6 +45,9 @@ public:
   ImVec2 statePosition(const core::State &state) const;
   void setStatePosition(const core::State &state, ImVec2 pos);
 
+  const ui::TransitionLabelEditor &transitionLabelEditor() const { return labelEditor_; }
+  ui::TransitionLabelEditor &transitionLabelEditor() { return labelEditor_; }
+
   // --- State / Transition management ---
   void addState(const core::State &state, ImVec2 pos);
   ui::TransitionDrawObject *addTransition(const core::Transition &trans);
@@ -51,6 +56,9 @@ public:
 
   // --- Coordinate transformations ---
   void setCanvasOrigin(const ImVec2 &o);
+  ImVec2 canvasOrigin() const { return canvasOrigin_; }
+  void setScrollXY(const ImVec2 &s) { scrollXY_ = s; }
+  ImVec2 scrollXY() const { return scrollXY_; }
   ImVec2 screenToCanvas(const ImVec2 &mouse) const;
   ImVec2 canvasToScreen(const ImVec2 &p) const;
   utils::Rect canvasToScreen(const utils::Rect &p) const;
@@ -60,11 +68,13 @@ public:
   void drawObjects(ImDrawList *dr);
   void clearDrawObjects();
   void clearManipulators();
+  void removeSelected();
   std::vector<ui::Manipulator *> getManipulators() const;
 #if 0
   ui::DrawObject *lastAddedDrawObject() { return drawObjects_.back().get(); }
   void updateObjects();
 #endif
+  void rebuildDrawObjectsFromTM();
 
 
   static ImGui::FileBrowser &fileBrowser();

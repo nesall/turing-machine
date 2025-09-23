@@ -333,7 +333,7 @@ void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
   const auto &style = tdo_->transitionStyle();
 
   auto displayC = [](char c) {
-    return std::string(1, '-');
+    return c == core::Tape::Blank ? '-' : c;
     };
   auto displayDir = [](core::Tape::Dir d) {
     return std::string(d == core::Tape::Dir::LEFT ? "<=" : "=>");
@@ -355,6 +355,13 @@ void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
   rect_.y = labelPos.y;
   rect_.w = textSize.x;
   rect_.h = textSize.y;
+
+  ImVec2 mousePos = ImGui::GetMousePos();
+  if (containsPoint(mousePos.x, mousePos.y) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    auto p = const_cast<ui::TransitionDrawObject *>(tdo_);
+    appState_->transitionLabelEditor().openEditor(&p->getTransition());
+  }
+
 }
 
 utils::Rect ui::TransitionLabelDrawObject::boundingRect() const
@@ -380,4 +387,64 @@ ui::Manipulator *ui::TransitionLabelDrawObject::getOrCreateManipulator(bool bCre
     return manipulator_.get();
   }
   return nullptr;
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
+void ui::TransitionLabelEditor::openEditor(core::Transition *trans)
+{
+  showDialog_ = true;
+  editingTransition_ = trans;
+  readSymbol_[0] = trans->readSymbol();
+  writeSymbol_[0] = trans->writeSymbol();
+  direction_ = (trans->direction() == core::Tape::Dir::LEFT) ? 0 : 1;
+  ImGui::OpenPopup("Edit Transition");
+}
+
+void ui::TransitionLabelEditor::render()
+{
+  if (ImGui::BeginPopupModal("Edit Transition", &showDialog_, ImGuiWindowFlags_AlwaysAutoResize)) {
+
+    ImGui::Text("Edit Transition Properties");
+    ImGui::Separator();
+
+    ImGui::Text("Read Symbol:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(50);
+    ImGui::InputText("##read", readSymbol_, 2);
+
+    ImGui::Text("Write Symbol:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(50);
+    ImGui::InputText("##write", writeSymbol_, 2);
+
+    ImGui::Text("Direction:");
+    ImGui::SameLine();
+    const char *dirs[] = { "Left", "Right" };
+    ImGui::Combo("##direction", &direction_, dirs, 2);
+
+    if (ImGui::Button("OK")) {
+      applyChanges();
+      showDialog_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      showDialog_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+  }
+}
+
+void ui::TransitionLabelEditor::applyChanges()
+{
+  if (editingTransition_) {
+    editingTransition_->setReadSymbol(readSymbol_[0]);
+    editingTransition_->setWriteSymbol(writeSymbol_[0]);
+    editingTransition_->setDirection(direction_ == 0 ? core::Tape::Dir::LEFT : core::Tape::Dir::RIGHT);
+  }
 }
