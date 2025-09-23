@@ -1,5 +1,6 @@
 #include "app.hpp"
 #include <algorithm>
+#include "ui/imfilebrowser.h"
 
 
 void AppState::setMenu(AppState::Menu m)
@@ -114,14 +115,19 @@ ui::DrawObject *AppState::targetObject(const ImVec2 &pos) const
   return transitionHit ? transitionHit : other;
 }
 
-void AppState::drawObjects()
+void AppState::drawObjects(ImDrawList *dr)
 {
   for (auto &obj : drawObjects_) {
-    obj->draw();
+    obj->draw(dr);
     if (auto p = obj->getManipulator()) {
-      p->draw();
+      p->draw(dr);
     }
   }
+}
+
+void AppState::clearDrawObjects()
+{
+  drawObjects_.clear();
 }
 
 void AppState::clearManipulators()
@@ -164,3 +170,9 @@ void AppState::updateObjects()
   }
 }
 #endif
+
+ImGui::FileBrowser &AppState::fileBrowser()
+{
+  static ImGui::FileBrowser fileDialog;
+  return fileDialog;
+}

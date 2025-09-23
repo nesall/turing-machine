@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <format>
 #include <string>
+#include <iterator>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -52,6 +53,26 @@ namespace utils {
     }
   };
 
+  // write a function to join a container into a string
+  template <typename Container>
+  std::string join(const Container &c, const std::string &sep = ", ") {
+    std::string result;
+    for (auto it = c.begin(); it != c.end(); ++it) {
+      result += *it;
+      if (std::next(it) != c.end()) {
+        result += sep;
+      }
+    }
+    return result;
+  }
+
+  // dynamically calculate a lighter color based on char value
+  inline ImU32 colorFromChar(char c) {
+    unsigned char r = (c * 123) % 92 + 164;
+    unsigned char g = (c * 321) % 92 + 164;
+    unsigned char b = (c * 213) % 92 + 164;
+    return IM_COL32(r, g, b, 255);
+  }
 }
 
 namespace Colors {

@@ -1,6 +1,56 @@
 #include "turingmachine.hpp"
 #include <nlohmann/json.hpp>
 
+
+void core::Tape::writeAt(int index, char c)
+{
+  if (cells_[index] != c) alphabet_.clear();
+  else if (c != Tape::Blank) alphabet_.insert(c);
+  cells_[index] = c;
+}
+
+std::set<char> core::Tape::alphabet() const
+{
+  if (alphabet_.empty()) {
+    for (const auto &p : cells_)
+      if (p.second != Tape::Blank) alphabet_.insert(p.second);
+  }
+  return alphabet_;
+}
+
+std::string core::Tape::toJson() const
+{
+  using nlohmann::json;
+  json j;
+  j["headPosition"] = headPosition_;
+  j["cells"] = json::array();
+  for (const auto &p : cells_) {
+    if (p.second != Tape::Blank) {
+      j["cells"].push_back({ {"index", p.first}, {"symbol", std::string(1, p.second)} });
+    }
+  }
+  return j.dump();
+}
+
+void core::Tape::fromJson(const std::string &jsonStr)
+{
+  using nlohmann::json;
+  auto j = json::parse(jsonStr);
+  headPosition_ = j.value("headPosition", 0);
+  cells_.clear();
+  alphabet_.clear();
+  for (const auto &item : j["cells"]) {
+    int index = item.value("index", 0);
+    std::string symbolStr = item.value("symbol", "");
+    char symbol = symbolStr.empty() ? Tape::Blank : symbolStr[0];
+    writeAt(index, symbol);
+  }
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
 core::TuringMachine::TuringMachine()
 {
   // Example transitions for a simple Turing machine
@@ -10,7 +60,7 @@ core::TuringMachine::TuringMachine()
   //State qReject("qReject", State::Type::REJECT);
   //addTransition(q0, '0', q1, '1', Tape::Dir::RIGHT);
   //addTransition(q1, '1', qAccept, '1', Tape::Dir::LEFT);
-  //addTransition(q1, Alphabet::Blank, qReject, '0', Tape::Dir::RIGHT);
+  //addTransition(q1, Tape::Blank, qReject, '0', Tape::Dir::RIGHT);
   //currentState_ = q0;
 }
 

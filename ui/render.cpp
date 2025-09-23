@@ -5,12 +5,15 @@
 #include "model/turingmachine.hpp"
 #include "ui/drawobject.hpp"
 #include "ui/serializer.hpp"
+#include "ui/imfilebrowser.h"
 #include <functional>
 #include <imgui.h>
 #include <string>
 #include <format>
+#include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <array>
 
 
 namespace {
@@ -21,6 +24,7 @@ namespace {
   float _canvasHeight = 0;
   std::string _statusMessage;
   std::chrono::steady_clock::time_point _statusTime;
+  std::array<char, 255> _fnameBuffer;
 
   void styledButton(const char *label, bool active, bool enabled, std::function<void()> onClick) {
     if (active) {
@@ -89,6 +93,8 @@ void ui::render(AppState &appState)
   drawStatusBar(appState);
   drawTape(appState);
   drawCanvas(appState);
+
+  AppState::fileBrowser().Display();
 }
 
 void drawToolbar(AppState &appState)
@@ -120,13 +126,20 @@ void drawToolbar(AppState &appState)
   ImGui::SameLine();
 
   if (ImGui::Button("Save")) {
-    if (AppSerializer::saveToFile(appState)) {
+    if (AppSerializer::saveToFile(appState, std::string{ _fnameBuffer.data() })) {
       _statusMessage = "Saved successfully!";
       _statusTime = std::chrono::steady_clock::now();
+      appState.setWindowTitle(_fnameBuffer.data());
     } else {
       _statusMessage = "Save failed!";
       _statusTime = std::chrono::steady_clock::now();
     }
+  }
+
+  ImGui::SameLine();
+  if (ImGui::InputText("##edit", _fnameBuffer.data(), _fnameBuffer.size(),
+    ImGuiInputTextFlags_CharsNoBlank | ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue)) {
+    //editor.finishEdit(tape);
   }
 
   ImGui::SameLine();
@@ -148,9 +161,14 @@ void drawToolbar(AppState &appState)
     auto recentFiles = AppSerializer::getSavedFiles();
     for (const auto &file : recentFiles) {
       if (ImGui::Selectable(file.c_str())) {
-        if (AppSerializer::loadFromFile(appState, file)) {
+        if (AppSerializer::loadFromFile(appState, file)) {          
           _statusMessage = "Loaded: " + file;
           _statusTime = std::chrono::steady_clock::now();
+          std::fill(_fnameBuffer.begin(), _fnameBuffer.end(), '\0');
+          assert(file.size() <= _fnameBuffer.size());
+          for (size_t j = 0; j < file.size(); j ++) {
+            _fnameBuffer[j] = file[j];
+          }
         }
       }
 
@@ -317,12 +335,11 @@ void drawStatusBar(AppState &appState)
   ImGui::SetWindowPos(ImVec2(0, io.DisplaySize.y - h), ImGuiCond_Always);
   ImGui::SetWindowSize(ImVec2(io.DisplaySize.x, h), ImGuiCond_Always);
 
-  // Show status message for a few seconds
   if (!_statusMessage.empty()) {
     auto now = std::chrono::steady_clock::now();
     if (std::chrono::duration_cast<std::chrono::seconds>(now - _statusTime).count() < 3) {
       ImGui::SameLine();
-      ImGui::TextColored(ImVec4(0, 1, 0, 1), "%s", _statusMessage.c_str());
+      ImGui::TextUnformatted(_statusMessage.c_str());
     } else {
       _statusMessage.clear();
     }
@@ -411,7 +428,7 @@ void handleToolbar(AppState &appState)
       auto pos = io.MousePos;
       auto s = tm.nextUniqueStateName();
       auto t = tm.states().size() == 0 ? core::State::Type::START : core::State::Type::NORMAL;
-      ui::StateDrawObject::drawState(appState._tempAddState = core::State(s, t), posOffset(pos), Colors::orange, true);
+      ui::StateDrawObject::drawState(appState.tempAddState_ = core::State(s, t), posOffset(pos), Colors::orange, true);
     }
     break;
   case AppState::Menu::ADD_TRANSITION:
@@ -449,7 +466,7 @@ void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
     }
     break;
   case AppState::Menu::ADD_STATE:
-    appState.addState(appState._tempAddState, posOffset(mousePos));
+    appState.addState(appState.tempAddState_, posOffset(mousePos));
     break;
   case AppState::Menu::ADD_TRANSITION:
     if (!appState.dragState.isTransitionConnecting()) {

@@ -8,7 +8,9 @@
 #include <sstream>
 #include <iostream>
 
-#include "imgui.h"
+#include <imgui.h>
+#include "ui/imfilebrowser.h"
+
 
 using json = nlohmann::json;
 
@@ -27,7 +29,6 @@ namespace {
     default: return "select";
     }
   }
-
 
 } // anonymous namespace
 
@@ -116,7 +117,6 @@ bool AppSerializer::saveToFile(const AppState &appState, const std::string &file
   if (filepath.empty()) {
     filepath = "machine_" + getCurrentTimestamp() + ".json";
   }
-
   try {
     json j = serialize(appState);
     std::ofstream file(filepath);
@@ -129,10 +129,9 @@ bool AppSerializer::saveToFile(const AppState &appState, const std::string &file
   }
 }
 
-bool AppSerializer::loadFromFile(AppState &appState, const std::string &filename)
+bool AppSerializer::loadFromFile(AppState &appState, const std::string &path)
 {
-  std::string filepath = filename;
-
+  std::string filepath = path;
   if (filepath.empty()) {
     filepath = findMostRecentFile();
     if (filepath.empty()) {
@@ -140,12 +139,10 @@ bool AppSerializer::loadFromFile(AppState &appState, const std::string &filename
       return false;
     }
   }
-
   if (!std::filesystem::exists(filepath)) {
     std::cerr << "File not found: " << filepath << std::endl;
     return false;
   }
-
   try {
     std::ifstream file(filepath);
     json j;
@@ -153,7 +150,9 @@ bool AppSerializer::loadFromFile(AppState &appState, const std::string &filename
     bool success = deserialize(j, appState);
     if (success) {
       std::cout << "Loaded from: " << filepath << std::endl;
-    }
+    }    
+    std::filesystem::path fsPath(filepath);
+    appState.setWindowTitle(fsPath.filename().string());
     return success;
   } catch (const std::exception &e) {
     std::cerr << "Load error: " << e.what() << std::endl;
@@ -178,6 +177,18 @@ std::vector<std::string> AppSerializer::getSavedFiles()
     std::cerr << "Error listing files: " << e.what() << std::endl;
   }
   return files;
+}
+
+void AppSerializer::saveToFileWithDialog(const AppState &appState)
+{
+  auto &dlg = AppState::fileBrowser();
+  dlg.SetTitle("Save to file");
+  dlg.SetTypeFilters({ ".json", ".txt" });
+  dlg.Open();
+}
+
+void AppSerializer::loadFrFileWithDialog(const AppState &appState)
+{
 }
 
 void AppSerializer::rebuildDrawObjects(AppState &appState)

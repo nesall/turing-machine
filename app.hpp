@@ -9,10 +9,17 @@
 #include <map>
 #include <vector>
 #include <memory>
+#include <string>
+
+
+namespace ImGui {
+  class FileBrowser;
+}
+
 
 class AppState {
 public:
-  enum class Menu { SELECT, ADD_STATE, ADD_TRANSITION };
+  enum class Menu { SELECT, ADD_STATE, ADD_TRANSITION, RUNNING, PAUSED };
 
 private:
   core::TuringMachine tm_;
@@ -20,16 +27,18 @@ private:
   std::map<core::State, ImVec2> stateToPosition_;
   ImVec2 canvasOrigin_;
   std::vector<std::unique_ptr<ui::DrawObject>> drawObjects_;
+  std::string windowTitle_;
 
 public:
   DragState dragState;
-  core::State _tempAddState;
+  core::State tempAddState_;
 
   const core::TuringMachine &tm() const { return tm_; }
   core::TuringMachine &tm() { return tm_; }
   AppState::Menu menu() const { return menu_; }
-
   void setMenu(AppState::Menu m);
+  std::string windowTitle() const { return windowTitle_; }
+  void setWindowTitle(const std::string &s) { windowTitle_ = s; }
 
   ImVec2 statePosition(const core::State &state) const;
   void setStatePosition(const core::State &state, ImVec2 pos);
@@ -48,13 +57,18 @@ public:
 
   // --- Object handling ---
   ui::DrawObject *targetObject(const ImVec2 &pos) const;
-  void drawObjects();
+  void drawObjects(ImDrawList *dr);
+  void clearDrawObjects();
   void clearManipulators();
   std::vector<ui::Manipulator *> getManipulators() const;
 #if 0
   ui::DrawObject *lastAddedDrawObject() { return drawObjects_.back().get(); }
   void updateObjects();
 #endif
+
+
+  static ImGui::FileBrowser &fileBrowser();
+
 };
 
 #endif

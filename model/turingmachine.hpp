@@ -8,30 +8,37 @@
 
 namespace core {
 
-  class Alphabet {
-    std::set<char> symbols_;    
-  public:
-    static const char Blank = 0;
-    void addSymbol(char c) { symbols_.insert(c); }
-    bool contains(char c) const { return symbols_.count(c) > 0; }
-  };
+  //class Alphabet {
+  //  std::set<char> symbols_;
+  //public:
+  //  static const char Blank = 0;
+  //  void addSymbol(char c) { symbols_.insert(c); }
+  //  bool contains(char c) const { return symbols_.count(c) > 0; }
+  //  const std::set<char> &symbols() const { return symbols_; }
+  //};
 
   class Tape {
   private:
     std::map<int, char> cells_;
     int headPosition_ = 0;
+    mutable std::set<char> alphabet_;
   public:
+    static const char Blank = 0;
     enum class Dir { LEFT, RIGHT };
+
     int head() const { return headPosition_; }
-    char read() const { return cells_.contains(head()) ? cells_.at(head()) : Alphabet::Blank; }
-    void write(char symbol) { cells_[head()] = symbol; }
+    char read() const { return cells_.contains(head()) ? cells_.at(head()) : Tape::Blank; }
+    void write(char symbol) { writeAt(head(), symbol); }
     void move(Dir dir) { dir == Dir::LEFT ? moveLeft() : moveRight(); }
     void moveLeft() { headPosition_ --; }
     void moveRight() { headPosition_ ++; }
     void moveToLeftMost() { if (cells_.empty()) return; headPosition_ = cells_.begin()->first; }
     void moveToRightMost() { if (cells_.empty()) return; headPosition_ = cells_.rbegin()->first; }
-
-    char readAt(int index) const { return cells_.contains(index) ? cells_.at(index) : Alphabet::Blank; }
+    char readAt(int index) const { return cells_.contains(index) ? cells_.at(index) : Tape::Blank; }
+    void writeAt(int index, char c);
+    std::set<char> alphabet() const;
+    std::string toJson() const;
+    void fromJson(const std::string &json);
   };
 
   class State {

@@ -53,13 +53,13 @@ int main() {
 
   AppState state;
 
-  auto &tape = state.tm().tape();
-  char a[4] = {'A', 'B', 'C', 'D'};
-  for (int j = 0; j < 20; j ++) {
-    tape.write(a[(j % (j % 4 + 1) + 1) % 4]);
-    tape.moveRight();
-  }
-  tape.moveToLeftMost();
+  //auto &tape = state.tm().tape();
+  //char a[4] = {'A', 'B', 'C', 'D'};
+  //for (int j = 0; j < 20; j ++) {
+  //  tape.write(a[(j % (j % 4 + 1) + 1) % 4]);
+  //  tape.moveRight();
+  //}
+  //tape.moveToLeftMost();
 
   // Test positions
   //state.setStatePosition(core::State("q0", core::State::Type::START), ImVec2(200, 200));
@@ -76,6 +76,12 @@ int main() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+
+    std::string title{"Turing Machine GUI"};
+    if (!state.windowTitle().empty()) {
+      title += " - " + state.windowTitle();
+    }
+    glfwSetWindowTitle(window, title.c_str());
 
     ui::render(state);
 

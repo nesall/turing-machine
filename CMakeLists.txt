@@ -69,6 +69,9 @@ add_executable(TuringMachineGUI
   ui/fa_icons.hpp
   ui/drawobject.hpp
   ui/drawobject.cpp
+  ui/serializer.hpp
+  ui/serializer.cpp
+  ui/imfilebrowser.h
   app.hpp
   app.cpp
   defs.hpp
