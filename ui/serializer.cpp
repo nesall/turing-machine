@@ -1,4 +1,6 @@
 #include "ui/serializer.hpp"
+#include "ui/drawobject.hpp"
+#include "model/turingmachine.hpp"
 #include "app.hpp"
 
 #include <fstream>
@@ -30,6 +32,32 @@ namespace {
     }
   }
 
+  ui::TransitionDrawObject *findTransitionDrawObject(AppState &appState, const std::string &key) {
+    for (size_t j = 0; j < appState.nofDrawObjects(); j ++) {
+      auto obj = appState.getDrawObject(j);
+      if (auto transObj = obj->asTransition()) {
+        auto tk = transObj->getTransition().uniqueKey();
+        if (tk == key) {
+          return const_cast<ui::TransitionDrawObject *>(transObj);
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  ui::TransitionLabelDrawObject *findTransitionLabelDrawObject(AppState &appState, const std::string &key) {
+    for (size_t j = 0; j < appState.nofDrawObjects(); j ++) {
+      auto obj = appState.getDrawObject(j);
+      if (auto labelObj = obj->asTransitionLabel(); labelObj && labelObj->transitionDrawObject()) {
+        auto tk = labelObj->transitionDrawObject()->getTransition().uniqueKey();
+        if (tk == key) {
+          return const_cast<ui::TransitionLabelDrawObject *>(labelObj);
+        }
+      }
+    }
+    return nullptr;
+  }
+
 } // anonymous namespace
 
 json AppSerializer::serialize(const AppState &appState)
@@ -54,13 +82,22 @@ json AppSerializer::serialize(const AppState &appState)
   j["ui"]["statePositions"] = json::object();
   for (const auto &state : appState.tm().states()) {
     ImVec2 pos = appState.statePosition(state) + appState.scrollXY() - appState.canvasOrigin();
-    j["ui"]["statePositions"][state.name()] = {
-        {"x", pos.x}, {"y", pos.y}
-    };
+    std::string name = state.name();
+    j["ui"]["statePositions"][name] = { {"x", pos.x}, {"y", pos.y} };
   }
 
-  // TODO: handle labels, transition arcHeight etc.
-
+  j["ui"]["transitionStyles"] = json::object();
+  j["ui"]["transitionLabels"] = json::object();
+  for (size_t i = 0; i < appState.nofDrawObjects(); i ++) {
+    auto obj = appState.getDrawObject(i);
+    if (auto tr = obj->asTransition()) {
+      std::string transKey = tr->getTransition().uniqueKey();
+      j["ui"]["transitionStyles"][transKey] = tr->toJson();
+    } else if (auto lb = obj->asTransitionLabel()) {
+      std::string transKey = lb->transitionDrawObject()->getTransition().uniqueKey();
+      j["ui"]["transitionLabels"][transKey] = lb->toJson();
+    }
+  }
   return j;
 }
 
@@ -104,6 +141,23 @@ bool AppSerializer::deserialize(const json &j, AppState &appState)
           }
         }
       }
+
+      if (ui.contains("transitionStyles")) {
+        for (const auto &[transKey, styleData] : ui["transitionStyles"].items()) {
+          if (auto transObj = findTransitionDrawObject(appState, transKey)) {
+            transObj->fromJson(styleData);
+          }
+        }
+      }
+
+      if (ui.contains("transitionLabels")) {
+        for (const auto &[transKey, labelData] : ui["transitionLabels"].items()) {
+          if (auto labelObj = findTransitionLabelDrawObject(appState, transKey)) {
+            labelObj->fromJson(labelData);
+          }
+        }
+      }
+
     }
 
     return true;
@@ -153,7 +207,7 @@ bool AppSerializer::loadFromFile(AppState &appState, const std::string &path)
     bool success = deserialize(j, appState);
     if (success) {
       std::cout << "Loaded from: " << filepath << std::endl;
-    }    
+    }
     std::filesystem::path fsPath(filepath);
     appState.setWindowTitle(fsPath.filename().string());
     return success;

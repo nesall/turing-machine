@@ -7,6 +7,14 @@
 
 class AppState;
 
+namespace core {
+  class Transition;
+}
+
+namespace ui {
+  class TransitionDrawObject;
+}
+
 class AppSerializer {
 public:
   // Save complete application state

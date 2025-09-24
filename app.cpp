@@ -28,6 +28,11 @@ void AppState::addState(const core::State &state, ImVec2 pos)
 ui::TransitionDrawObject *AppState::addTransition(const core::Transition &trans)
 {
   tm_.addTransition(trans);
+  return createTransitionObject(trans);
+}
+
+ui::TransitionDrawObject *AppState::createTransitionObject(const core::Transition &trans)
+{
   auto transObj = std::make_unique<ui::TransitionDrawObject>(trans, this);
   auto *tr = transObj.get();
   drawObjects_.push_back(std::move(transObj));
@@ -214,6 +219,7 @@ void AppState::rebuildDrawObjectsFromTM()
 
   // Create DrawObjects for existing transitions
   for (const auto &transition : tm_.transitions()) {
-    drawObjects_.emplace_back(std::make_unique<ui::TransitionDrawObject>(transition, this));
+    //drawObjects_.emplace_back(std::make_unique<ui::TransitionDrawObject>(transition, this));
+    createTransitionObject(transition);
   }
 }

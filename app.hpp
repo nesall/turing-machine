@@ -31,6 +31,8 @@ private:
   ui::TransitionLabelEditor labelEditor_;
   ImVec2 scrollXY_;
 
+  ui::TransitionDrawObject *createTransitionObject(const core::Transition &trans);
+
 public:
   DragState dragState;
   core::State tempAddState_;
@@ -70,6 +72,8 @@ public:
   void clearManipulators();
   void removeSelected();
   std::vector<ui::Manipulator *> getManipulators() const;
+  size_t nofDrawObjects() const { return drawObjects_.size(); }
+  const ui::DrawObject *getDrawObject(size_t i) const { return drawObjects_.at(i).get(); }
 #if 0
   ui::DrawObject *lastAddedDrawObject() { return drawObjects_.back().get(); }
   void updateObjects();

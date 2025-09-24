@@ -17,6 +17,7 @@ namespace core {
   //  const std::set<char> &symbols() const { return symbols_; }
   //};
 
+
   class Tape {
   private:
     std::map<int, char> cells_;
@@ -24,7 +25,7 @@ namespace core {
     mutable std::set<char> alphabet_;
   public:
     static const char Blank = 0;
-    enum class Dir { LEFT, RIGHT };
+    enum class Dir { STAY, LEFT, RIGHT };
 
     int head() const { return headPosition_; }
     char read() const { return cells_.contains(head()) ? cells_.at(head()) : Tape::Blank; }
@@ -40,6 +41,8 @@ namespace core {
     std::string toJson() const;
     void fromJson(const std::string &json);
   };
+
+  std::string dirToStr(core::Tape::Dir d);
 
   class State {
   public:
@@ -73,9 +76,9 @@ namespace core {
     Transition(const State& from, const State &to, char readSymbol, char writeSymbol, Tape::Dir direction)
         : from_(from), readSymbol_(readSymbol), to_(to), writeSymbol_(writeSymbol), direction_(direction) {}
 
-    bool operator==(const Transition &rhs) const { 
-      return from_ == rhs.from_ && to_ == rhs.to_ && readSymbol_ == rhs.readSymbol_ && writeSymbol_ == rhs.writeSymbol_ && direction_ == rhs.direction_;
-    }
+    bool operator==(const Transition &rhs) const { return uniqueKey() == rhs.uniqueKey(); }
+
+    std::string uniqueKey() const;
 
     // Getters
     const State &from() const { return from_; }

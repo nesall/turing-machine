@@ -5,8 +5,9 @@
 #include "defs.hpp"
 #include <memory>
 #include <optional>
+#include <functional>
 #include <imgui.h>
-
+#include <nlohmann/json.hpp>
 
 
 class AppState;
@@ -26,6 +27,9 @@ namespace ui {
     ImU32 textColor = IM_COL32(0, 0, 0, 255);
     int transitionIndex = 0;          // For multiple transitions between same states
     std::optional<ImU32> colorHightlight = std::nullopt;
+
+    nlohmann::json toJson() const;
+    void fromJson(const nlohmann::json &j);
   };
 
   struct TransitionControlPoints {
@@ -70,6 +74,16 @@ namespace ui {
     virtual StateDrawObject *asState() { return nullptr; }
     virtual TransitionDrawObject *asTransition() { return nullptr; }
     virtual TransitionLabelDrawObject *asTransitionLabel() { return nullptr; }
+
+    const StateDrawObject *asState() const { return const_cast<DrawObject *>(this)->asState(); }
+    const TransitionDrawObject *asTransition() const { return const_cast<DrawObject *>(this)->asTransition(); }
+    const TransitionLabelDrawObject *asTransitionLabel() const { return const_cast<DrawObject *>(this)->asTransitionLabel(); }
+
+    template <class T> T *asType() { return nullptr; }
+    template <> StateDrawObject *asType() { return asState(); }
+    template <> TransitionDrawObject *asType() { return asTransition(); }
+    template <> TransitionLabelDrawObject *asType() { return asTransitionLabel(); }
+    template <class T> const T *asType() const { return const_cast<DrawObject *>(this)->asType<T>(); }
 
     AppState *appState() const { return appState_; }
 
@@ -122,6 +136,9 @@ namespace ui {
     void removeLabel(TransitionLabelDrawObject *label);
     const std::vector<TransitionLabelDrawObject *> &getLabels() const { return labels_; }
 
+    nlohmann::json toJson() const;
+    void fromJson(const nlohmann::json &json);
+
   public:
     static TransitionControlPoints drawTransition(const core::Transition &trans, ImVec2 posFrom, ImVec2 posTo, const TransitionStyle &style = TransitionStyle{});
 
@@ -151,18 +168,23 @@ namespace ui {
     void translate(const ImVec2 &delta) override;
     ui::Manipulator *getOrCreateManipulator(bool bCreate) override;
     TransitionLabelDrawObject *asTransitionLabel() override { return this; }
+
+    nlohmann::json toJson() const;
+    void fromJson(const nlohmann::json &json);
+
   };
 
 
   class TransitionLabelEditor {
   private:
     bool showDialog_ = false;
-    core::Transition *editingTransition_ = nullptr;
+    std::unique_ptr<core::Transition> transition_;
     char readSymbol_[2] = "";
     char writeSymbol_[2] = "";
     int direction_ = 0;
+    std::function<void(const core::Transition &)> onCommit_;
   public:
-    void openEditor(core::Transition *trans);
+    void openEditor(const core::Transition &trans, std::function<void(const core::Transition &)> f);
     void render();
   private:
     void applyChanges();

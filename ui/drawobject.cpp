@@ -7,9 +7,40 @@
 #include <format>
 #include <cassert>
 
+
 namespace {
   const float _stateRadius = 30.0f;
 } // anonymous namespace
+
+
+nlohmann::json ui::TransitionStyle::toJson() const
+{
+  return {
+    {"arcHeight", arcHeight},
+    {"lineThickness", lineThickness},
+    {"arrowSize", arrowSize},
+    {"selfLoopRadius", selfLoopRadius},
+    {"selfLoopOffset", selfLoopOffset},
+    {"color", color},
+    {"textColor", textColor},
+    {"transitionIndex", transitionIndex}
+  };
+}
+
+void ui::TransitionStyle::fromJson(const nlohmann::json &j)
+{
+  arcHeight = j.value("arcHeight", 40.0f);
+  lineThickness = j.value("lineThickness", 3.0f);
+  arrowSize = j.value("arrowSize", 10.0f);
+  selfLoopRadius = j.value("selfLoopRadius", 15.0f);
+  selfLoopOffset = j.value("selfLoopOffset", 20.0f);
+  color = j.value("color", IM_COL32(255, 165, 0, 255));
+  textColor = j.value("textColor", IM_COL32(0, 0, 0, 255));
+  transitionIndex = j.value("transitionIndex", 0);
+}
+
+
+//------------------------------------------------------------------------------------------
 
 
 ui::StateDrawObject::StateDrawObject(const core::State &state, AppState *app)
@@ -292,6 +323,22 @@ void ui::TransitionDrawObject::removeLabel(TransitionLabelDrawObject *label)
   labels_.erase(std::remove(labels_.begin(), labels_.end(), label), labels_.end());
 }
 
+nlohmann::json ui::TransitionDrawObject::toJson() const
+{
+  nlohmann::json j;
+  j["style"] = style_.toJson();
+  j["visible"] = isVisible();
+  return j;
+}
+
+void ui::TransitionDrawObject::fromJson(const nlohmann::json &j)
+{
+  if (j.contains("style")) {
+    style_.fromJson(j["style"]);
+  }
+  setVisible(j.value("visible", true));
+}
+
 
 //------------------------------------------------------------------------------------------
 
@@ -332,14 +379,9 @@ void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
   const auto &trans = tdo_->getTransition();
   const auto &style = tdo_->transitionStyle();
 
-  auto displayC = [](char c) {
-    return c == core::Tape::Blank ? '-' : c;
-    };
-  auto displayDir = [](core::Tape::Dir d) {
-    return std::string(d == core::Tape::Dir::LEFT ? "<=" : "=>");
-    };
+  auto displayC = [](char c) { return c == core::Tape::Blank ? '-' : c; };
 
-  auto label = std::format("('{}') ; ('{}', {})", displayC(trans.readSymbol()), displayC(trans.writeSymbol()), displayDir(trans.direction()));
+  auto label = std::format("({}, {} ; {})", displayC(trans.readSymbol()), displayC(trans.writeSymbol()), core::dirToStr(trans.direction()));
 
   ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
 
@@ -359,7 +401,13 @@ void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
   ImVec2 mousePos = ImGui::GetMousePos();
   if (containsPoint(mousePos.x, mousePos.y) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
     auto p = const_cast<ui::TransitionDrawObject *>(tdo_);
-    appState_->transitionLabelEditor().openEditor(&p->getTransition());
+    appState_->transitionLabelEditor().openEditor(p->getTransition(),
+      [=](const core::Transition &tr){
+        appState_->tm().updateTransition(p->getTransition(), tr);
+        p->getTransition().setDirection(tr.direction());
+        p->getTransition().setReadSymbol(tr.readSymbol());
+        p->getTransition().setWriteSymbol(tr.writeSymbol());
+      });
   }
 
 }
@@ -389,17 +437,35 @@ ui::Manipulator *ui::TransitionLabelDrawObject::getOrCreateManipulator(bool bCre
   return nullptr;
 }
 
+nlohmann::json ui::TransitionLabelDrawObject::toJson() const
+{
+  nlohmann::json j;
+  j["hasManualPosition"] = hasManualPosition_;
+  j["manualOffset"] = { {"x", manualOffset_.x}, {"y", manualOffset_.y} };
+  return j;
+}
+
+void ui::TransitionLabelDrawObject::fromJson(const nlohmann::json &j)
+{
+  hasManualPosition_ = j.value("hasManualPosition", false);
+  if (j.contains("manualOffset")) {
+    manualOffset_.x = j["manualOffset"].value("x", 0.0f);
+    manualOffset_.y = j["manualOffset"].value("y", 0.0f);
+  }
+}
+
 
 //------------------------------------------------------------------------------------------
 
 
-void ui::TransitionLabelEditor::openEditor(core::Transition *trans)
+void ui::TransitionLabelEditor::openEditor(const core::Transition &trans, std::function<void(const core::Transition &)> f)
 {
+  onCommit_ = f;
   showDialog_ = true;
-  editingTransition_ = trans;
-  readSymbol_[0] = trans->readSymbol();
-  writeSymbol_[0] = trans->writeSymbol();
-  direction_ = (trans->direction() == core::Tape::Dir::LEFT) ? 0 : 1;
+  transition_ = std::make_unique<core::Transition>(trans);
+  readSymbol_[0] = trans.readSymbol();
+  writeSymbol_[0] = trans.writeSymbol();
+  direction_ = (trans.direction() == core::Tape::Dir::LEFT) ? 0 : 1;
   ImGui::OpenPopup("Edit Transition");
 }
 
@@ -413,17 +479,21 @@ void ui::TransitionLabelEditor::render()
     ImGui::Text("Read Symbol:");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(50);
+    ImGui::PushStyleColor(ImGuiCol_Border, Colors::pastelGray);
     ImGui::InputText("##read", readSymbol_, 2);
+    ImGui::PopStyleColor();
 
     ImGui::Text("Write Symbol:");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(50);
+    ImGui::PushStyleColor(ImGuiCol_Border, Colors::pastelGray);
     ImGui::InputText("##write", writeSymbol_, 2);
+    ImGui::PopStyleColor();
 
     ImGui::Text("Direction:");
     ImGui::SameLine();
-    const char *dirs[] = { "Left", "Right" };
-    ImGui::Combo("##direction", &direction_, dirs, 2);
+    const char *dirs[] = { "Left", "Right", "Stay"};
+    ImGui::Combo("##direction", &direction_, dirs, 3);
 
     if (ImGui::Button("OK")) {
       applyChanges();
@@ -442,9 +512,18 @@ void ui::TransitionLabelEditor::render()
 
 void ui::TransitionLabelEditor::applyChanges()
 {
-  if (editingTransition_) {
-    editingTransition_->setReadSymbol(readSymbol_[0]);
-    editingTransition_->setWriteSymbol(writeSymbol_[0]);
-    editingTransition_->setDirection(direction_ == 0 ? core::Tape::Dir::LEFT : core::Tape::Dir::RIGHT);
+  transition_->setReadSymbol(readSymbol_[0]);
+  transition_->setWriteSymbol(writeSymbol_[0]);
+  switch (direction_) {
+  case 0:
+    transition_->setDirection(core::Tape::Dir::LEFT);
+    break;
+  case 1:
+    transition_->setDirection(core::Tape::Dir::RIGHT);
+    break;
+  default:
+    transition_->setDirection(core::Tape::Dir::STAY);
+    break;
   }
+  onCommit_(*transition_);
 }

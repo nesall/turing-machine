@@ -51,6 +51,33 @@ void core::Tape::fromJson(const std::string &jsonStr)
 //------------------------------------------------------------------------------------------
 
 
+std::string core::dirToStr(core::Tape::Dir d)
+{
+  switch (d) {
+  case core::Tape::Dir::LEFT: return "<=";
+  case core::Tape::Dir::RIGHT: return "=>";
+  default: return "=";
+  }
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
+std::string core::Transition::uniqueKey() const
+{
+  auto key = from().name() + "_" + std::string(1, readSymbol()) +
+    "_" + to().name() + "_" + std::string(1, writeSymbol()) +
+    "_" + dirToStr(direction());
+  //std::hash<std::string> hasher;
+  //return std::to_string(hasher(key));
+  return key;
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
 core::TuringMachine::TuringMachine()
 {
   // Example transitions for a simple Turing machine
@@ -165,7 +192,11 @@ std::string core::TuringMachine::toJson() const
     };
 
   auto dirToStr = [](Tape::Dir dir) {
-    return dir == Tape::Dir::LEFT ? "LEFT" : "RIGHT";
+    switch (dir) {
+    case core::Tape::Dir::LEFT: return "LEFT";
+    case core::Tape::Dir::RIGHT: return "RIGHT";
+    default: return "STAY";
+    }
     };
 
   json j;
@@ -202,7 +233,9 @@ void core::TuringMachine::fromJson(const std::string &jsonStr)
     };
 
   auto strToDir = [](const std::string &s) {
-    return s == "LEFT" ? Tape::Dir::LEFT : Tape::Dir::RIGHT;
+    if (s == "LEFT") return Tape::Dir::LEFT;
+    if (s == "RIGHT") return Tape::Dir::RIGHT;
+    return Tape::Dir::STAY;
     };
 
   unconnectedStates_.clear();
