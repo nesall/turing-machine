@@ -25,7 +25,7 @@ namespace ui {
     void setNextPos(const ImVec2 &pt, const ImVec2 &offset) { setNextPos(pt.x, pt.y, offset); }
     void setLastPos(const ImVec2 &pt) { setLastPos(pt.x, pt.y); }
 
-    bool handleMouse(const ImGuiIO &io, ImDrawList *drawList);
+    bool isFreezed() const;
 
   protected:
     ui::DrawObject *dro_;
@@ -56,7 +56,7 @@ namespace ui {
     void setNextPos(float x, float y, const ImVec2 &offset) override;
     void setLastPos(float x, float y) override;
   private:
-    void handleCurveManipulation(float x, float y, const ImVec2 &offset);
+    void handleCurveManipulation(float x, float y, const ImVec2 &offset, const ImVec2 &fromPos, const ImVec2 &toPos, bool bEdges = false);
     void handleSelfLoopManipulation(float x, float y, const ImVec2 &offset, ui::TransitionStyle &style);
     void startReconnection(DragState::Mode mode, float x, float y);
     void handleReconnection(DragState::Mode mode, float x, float y);

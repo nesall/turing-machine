@@ -13,6 +13,11 @@ ImVec2 AppState::statePosition(const core::State &state) const
   return canvasToScreen(stateToPosition_.at(state));
 }
 
+void AppState::removeStatePosition(const core::State &state)
+{
+  stateToPosition_.erase(state);
+}
+
 void AppState::setStatePosition(const core::State &state, ImVec2 pos)
 {
   stateToPosition_[state] = screenToCanvas(pos);
@@ -45,7 +50,7 @@ ui::TransitionDrawObject *AppState::createTransitionObject(const core::Transitio
 void AppState::removeState(const core::State &state)
 {
   tm_.removeState(state);
-  stateToPosition_.erase(state);
+  removeStatePosition(state);
   drawObjects_.erase(std::remove_if(drawObjects_.begin(), drawObjects_.end(),
     [&](const std::unique_ptr<ui::DrawObject> &obj) {
       if (auto stateObj = obj->asState()) {
@@ -57,6 +62,29 @@ void AppState::removeState(const core::State &state)
       }
       return false;
     }), drawObjects_.end());
+}
+
+void AppState::updateState(const core::State &old, const core::State &with)
+{
+  auto what{ old };
+  tm_.updateState(what, with);
+  for (auto &obj : drawObjects_) {
+    if (auto t = obj->asTransition()) {
+      if (t->getTransition().from() == what) {
+        t->getTransition().setFrom(with);
+      }
+      if (t->getTransition().to() == what) {
+        t->getTransition().setTo(with);
+      }
+    } else if (auto t = obj->asState()) {
+      if (t->getState() == what) {
+        t->getState() = with;
+      }
+    }
+  }
+  auto xy = statePosition(what);
+  removeStatePosition(what);
+  setStatePosition(with, xy);
 }
 
 void AppState::removeTransition(const core::Transition &trans)
@@ -127,6 +155,7 @@ void AppState::drawObjects(ImDrawList *dr)
     }
   }
   transitionLabelEditor().render();
+  stateEditor().render();
 }
 
 void AppState::clearDrawObjects()
@@ -195,10 +224,16 @@ void AppState::updateObjects()
 }
 #endif
 
-ImGui::FileBrowser &AppState::fileBrowser()
+ImGui::FileBrowser &AppState::fileBrowserSave()
 {
-  static ImGui::FileBrowser fileDialog;
-  return fileDialog;
+  static ImGui::FileBrowser t{ ImGuiFileBrowserFlags_EnterNewFilename };
+  return t;
+}
+
+ImGui::FileBrowser &AppState::fileBrowserOpen()
+{
+  static ImGui::FileBrowser t;
+  return t;
 }
 
 void AppState::rebuildDrawObjectsFromTM()
@@ -222,4 +257,56 @@ void AppState::rebuildDrawObjectsFromTM()
     //drawObjects_.emplace_back(std::make_unique<ui::TransitionDrawObject>(transition, this));
     createTransitionObject(transition);
   }
+}
+
+void AppState::startExecution()
+{
+  executor_.start(tm_);
+}
+
+void AppState::pauseExecution()
+{
+  executor_.pause();
+}
+
+void AppState::stepExecution()
+{
+  executor_.stepOnce(tm_);
+}
+
+void AppState::stopExecution()
+{
+  executor_.stop(tm_);
+}
+
+void AppState::updateExecution()
+{
+  executor_.update(tm_);
+  if (executor_.isRunning()) {
+    //highlightCurrentState();
+    //highlightLastTransition();
+  }
+}
+
+core::ExecutionState AppState::getExecutionState() const
+{
+  return executor_.state();
+}
+
+bool AppState::isExecuting() const
+{
+  switch (executor_.state()) {
+  case core::ExecutionState::RUNNING:
+  case core::ExecutionState::PAUSED:
+  case core::ExecutionState::STEP_MODE:
+    return true;
+  default:
+    return false;
+  }
+}
+
+core::ExecutionValidator::ValidationResult AppState::validateMachine() const
+{
+  core::ExecutionValidator ev;
+  return ev.validate(tm_);
 }

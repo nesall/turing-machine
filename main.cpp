@@ -10,6 +10,7 @@
 
 
 int main() {
+
   // Initialize GLFW
   if (!glfwInit()) {
     std::cerr << "Failed to initialize GLFW\n";
@@ -83,6 +84,7 @@ int main() {
     }
     glfwSetWindowTitle(window, title.c_str());
 
+    state.updateExecution();
     ui::render(state);
 
     // Rendering

@@ -5,6 +5,10 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <chrono>
+#include <optional>
+#include <nlohmann/json.hpp>
+
 
 namespace core {
 
@@ -30,7 +34,7 @@ namespace core {
     int head() const { return headPosition_; }
     char read() const { return cells_.contains(head()) ? cells_.at(head()) : Tape::Blank; }
     void write(char symbol) { writeAt(head(), symbol); }
-    void move(Dir dir) { dir == Dir::LEFT ? moveLeft() : moveRight(); }
+    void move(Dir dir);
     void moveLeft() { headPosition_ --; }
     void moveRight() { headPosition_ ++; }
     void moveToLeftMost() { if (cells_.empty()) return; headPosition_ = cells_.begin()->first; }
@@ -38,8 +42,10 @@ namespace core {
     char readAt(int index) const { return cells_.contains(index) ? cells_.at(index) : Tape::Blank; }
     void writeAt(int index, char c);
     std::set<char> alphabet() const;
-    std::string toJson() const;
-    void fromJson(const std::string &json);
+    nlohmann::json toJson() const;
+    void fromJson(const nlohmann::json &j);
+    size_t getNonBlankCellCount() const;
+    std::pair<int, int> getUsedRange() const;
   };
 
   std::string dirToStr(core::Tape::Dir d);
@@ -54,7 +60,9 @@ namespace core {
     bool operator<(const State &other) const { return name_ < other.name_; }
     bool operator==(const State &other) const { return name_ == other.name_; }
     std::string name() const { return name_; }
+    void setName(const std::string &name);
     Type type() const { return type_; }
+    void setType(Type type);
     bool isAccept() const { return type_ == Type::ACCEPT; }
     bool isReject() const { return type_ == Type::REJECT; }
     bool isStart() const { return type_ == Type::START; }
@@ -100,9 +108,11 @@ namespace core {
     TuringMachine();
 
     State currentState() const { return currentState_; }
+    std::string lastExecutedTransition() const { return lastExecutedTransition_; }
     const Tape &tape() const { return tape_; }
     Tape &tape() { return tape_; }
     void step();
+    void reset();
     bool isAccepting() const;
     bool isRejecting() const;
     std::vector<State> states() const;
@@ -110,20 +120,89 @@ namespace core {
     std::string nextUniqueStateName() const;
     void addUnconnectedState(const State &st);
     void removeState(State st);
+    bool updateState(const State &o, const State &n);
     bool hasTransitionsFrom(State st) const;
     void addTransition(const Transition &tr);
     void removeTransition(const Transition &tr);
     void updateTransition(const Transition &o, const Transition &n);
     std::vector<State> unconnectedStates() const { return unconnectedStates_; }
 
-    std::string toJson() const;
-    void fromJson(const std::string &json);
+    nlohmann::json toJson() const;
+    void fromJson(const nlohmann::json &j);
 
   private:
     std::vector<State> unconnectedStates_;
     std::vector<Transition> transitions_;
     State currentState_;
+    std::string lastExecutedTransition_;
     Tape tape_;
+    std::optional<Tape> tapeBackup_;
   };
 
-}
+
+  enum class ExecutionState {
+    STOPPED,      // Ready to run, not started
+    RUNNING,      // Actively executing steps
+    PAUSED,       // Execution suspended, can resume
+    STEP_MODE,    // Manual step-by-step execution
+    FINISHED,     // Reached accept/reject state
+    ERROR         // Invalid configuration or runtime error
+  };
+
+  std::string executionStateToStr(ExecutionState s);
+
+  class MachineExecutor {
+  private:
+    ExecutionState state_ = ExecutionState::STOPPED;
+    std::chrono::milliseconds stepDelay_{ 500 };
+    float speedFactor_ = 1.f;
+    std::chrono::steady_clock::time_point lastStepTime_;
+    size_t stepCount_ = 0;
+    size_t maxSteps_ = 10000;
+    mutable std::chrono::steady_clock::time_point executionStartTime_;
+    mutable std::chrono::milliseconds totalExecutionTime_{ 0 };
+    bool wasRunning_ = false;
+    int minTapePosition_ = 0;
+    int maxTapePosition_ = 0;
+    size_t maxCellsUsed_ = 0;
+
+  public:
+    void start(core::TuringMachine &tm);
+    void pause();
+    void stop(core::TuringMachine &tm);
+    void stepOnce(core::TuringMachine &tm);
+    void update(core::TuringMachine &tm);
+    ExecutionState state() const { return state_; }
+    bool isRunning() const { return state_ == ExecutionState::RUNNING; }
+    float speedFactor() const { return speedFactor_; }
+    void setSpeedFactor(float f) { speedFactor_ = f; }
+    size_t stepCount() const { return stepCount_; }
+    size_t cellsUsed() const { return maxCellsUsed_; }
+    std::chrono::milliseconds getElapsedTime() const;
+    std::string getFormattedTime() const;
+
+  private:
+    bool canStep(const core::TuringMachine &tm) const;
+    void executeStep(core::TuringMachine &tm);
+    bool validateMachine(const core::TuringMachine &tm) const;
+    void resetMachine(core::TuringMachine &tm) { tm.reset(); }
+    void resetSpaceTracking();
+    void updateSpaceTracking(const core::Tape &tape);
+  };
+
+
+  class ExecutionValidator {
+  public:
+    struct ValidationResult {
+      bool isValid = true;
+      std::vector<std::string> errors;
+      std::vector<std::string> warnings;
+    };
+    static ValidationResult validate(const core::TuringMachine &tm);
+  private:
+    static std::vector<core::State> findUnreachableStates(const core::TuringMachine &tm);
+    static std::vector<std::string> findNonUniqueStates(const core::TuringMachine &tm);
+    static bool hasNonDeterministicTransitions(const core::TuringMachine &tm);
+  };
+
+} // namespace core

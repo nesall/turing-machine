@@ -3,14 +3,52 @@
 #include "defs.hpp"
 #include "ui/manipulators.hpp"
 #include "model/turingmachine.hpp"
-#include <variant>
+#include <cmath>
 #include <format>
+#include <string>
+#include <cstring>
 #include <cassert>
 
 
 namespace {
-  const float _stateRadius = 30.0f;
+  const float _stateRadius = 25.0f;
 } // anonymous namespace
+
+
+ui::StatePosHelperData ui::StatePosHelperData::calcEdges(const ImVec2 &fr, const ImVec2 &to)
+{
+  StatePosHelperData res;
+  ImVec2 dir = ImVec2(to.x - fr.x, to.y - fr.y);
+  res.distance = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+  if (res.distance < 0.0001f) {
+    // Same position (self-loop)
+    res.edgeFrom = fr;
+    res.edgeTo = to;
+    res.distance = 0.0f;
+  } else {
+    dir.x /= res.distance;
+    dir.y /= res.distance;
+    res.edgeFrom = ImVec2(fr.x + dir.x * _stateRadius, fr.y + dir.y * _stateRadius);
+    res.edgeTo = ImVec2(to.x - dir.x * _stateRadius, to.y - dir.y * _stateRadius);
+  }
+  return res;
+}
+
+ui::StatePosHelperData ui::StatePosHelperData::calcEdgesSelfLink(const ImVec2 &pos, const ui::TransitionStyle &style)
+{
+  StatePosHelperData res;
+  const float angle = style.selfLinkRotationAngle * (style.transitionIndex * 60.0f) * (M_PI / 180.0f); // 60 degrees apart
+  const float rate = 0.125f;
+  res.edgeFrom = ImVec2(
+    pos.x + cosf(angle - M_PI * rate) * _stateRadius,
+    pos.y + sinf(angle - M_PI * rate) * _stateRadius
+  );
+  res.edgeTo = ImVec2(
+    pos.x + cosf(angle + M_PI * rate) * _stateRadius,
+    pos.y + sinf(angle + M_PI * rate) * _stateRadius
+  );
+  return res;
+}
 
 
 nlohmann::json ui::TransitionStyle::toJson() const
@@ -19,8 +57,8 @@ nlohmann::json ui::TransitionStyle::toJson() const
     {"arcHeight", arcHeight},
     {"lineThickness", lineThickness},
     {"arrowSize", arrowSize},
-    {"selfLoopRadius", selfLoopRadius},
-    {"selfLoopOffset", selfLoopOffset},
+    //{"selfLoopRadius", selfLoopRadius},
+    //{"selfLoopOffset", selfLoopOffset},
     {"color", color},
     {"textColor", textColor},
     {"transitionIndex", transitionIndex}
@@ -32,8 +70,8 @@ void ui::TransitionStyle::fromJson(const nlohmann::json &j)
   arcHeight = j.value("arcHeight", 40.0f);
   lineThickness = j.value("lineThickness", 3.0f);
   arrowSize = j.value("arrowSize", 10.0f);
-  selfLoopRadius = j.value("selfLoopRadius", 15.0f);
-  selfLoopOffset = j.value("selfLoopOffset", 20.0f);
+  //selfLoopRadius = j.value("selfLoopRadius", 15.0f);
+  //selfLoopOffset = j.value("selfLoopOffset", 20.0f);
   color = j.value("color", IM_COL32(255, 165, 0, 255));
   textColor = j.value("textColor", IM_COL32(0, 0, 0, 255));
   transitionIndex = j.value("transitionIndex", 0);
@@ -51,7 +89,14 @@ ui::StateDrawObject::StateDrawObject(const core::State &state, AppState *app)
 void ui::StateDrawObject::draw(ImDrawList *) const
 {
   ImVec2 pos = appState_->statePosition(state_);
-  drawState(state_, pos, Colors::black);
+  drawState(*appState_, state_, pos, Colors::black);
+  ImVec2 mousePos = ImGui::GetMousePos();
+  if (containsPoint(mousePos.x, mousePos.y) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    appState_->stateEditor().openEditor(state_,
+      [=](const core::State &st) {
+        appState_->updateState(state_, st);
+      });
+  }
 }
 
 utils::Rect ui::StateDrawObject::boundingRect() const
@@ -76,25 +121,39 @@ ui::Manipulator *ui::StateDrawObject::getOrCreateManipulator(bool bCreate)
   return nullptr;
 }
 
-void ui::StateDrawObject::drawState(const core::State &state, ImVec2 pos, ImU32 clr, bool temp)
+void ui::StateDrawObject::drawState(AppState &appState, const core::State &state, ImVec2 pos, ImU32 clr, bool temp)
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
   ImU32 textClr = Colors::black;
   if (!temp) {
-    auto  fill = IM_COL32(0, 128, 255, 255);
+    auto  fill = Colors::royalBlue;
     if (state.isAccept()) {
-      fill = Colors::green;
+      fill = Colors::darkGreen;
     } else if (state.isReject()) {
       fill = Colors::red;
     } else if (state.isStart()) {
-      fill = IM_COL32(102, 178, 255, 255);
+      fill = Colors::dodgerBlue;
+    }
+    if (appState.isExecuting() && appState.tm().currentState() == state) {
+      fill = Colors::pastelYellow; // Yellow highlight
+      // Optional: pulsing effect
+      float pulse = (sin(ImGui::GetTime() * 8.0f) + 1.0f) * 0.5f;
+      fill = IM_COL32(255, 255, (int)(255 * pulse), 200);
+    } else {
+      textClr = Colors::white;
     }
     dr->AddCircleFilled(pos, _stateRadius, fill);
-    textClr = Colors::white;
   }
   dr->AddCircle(pos, _stateRadius, clr, 64, 2.0f);
   ImVec2 sz = ImGui::CalcTextSize(state.name().c_str());
   dr->AddText(ImVec2(pos.x - sz.x / 2, pos.y - sz.y / 2), textClr, state.name().c_str());
+  if (state.isStart()) {
+    // Draw a little arrow pointing to the state circle from the left side (arrow points to the right to the circle)
+    ImVec2 p1 = ImVec2(pos.x - _stateRadius - 20, pos.y);
+    ImVec2 p2 = ImVec2(pos.x - _stateRadius, pos.y);
+    dr->AddLine(p1, p2, Colors::black, 1.0f);
+    dr->AddTriangleFilled(ImVec2(p2.x - 10, p2.y - 5), ImVec2(p2.x, p2.y), ImVec2(p2.x - 10, p2.y + 5), Colors::black);
+  }
 }
 
 float ui::StateDrawObject::radius()
@@ -106,26 +165,16 @@ float ui::StateDrawObject::radius()
 //------------------------------------------------------------------------------------------
 
 
-ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core::Transition &trans, ImVec2 posFrom, ImVec2 posTo, const TransitionStyle &style)
+ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(
+  AppState &appState, const core::Transition &trans, ImVec2 fromPos, ImVec2 toPos, const TransitionStyle &style)
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
   TransitionControlPoints controlPoints;
 
-  // Calculate direction from center to center
-  ImVec2 delta = ImVec2(posTo.x - posFrom.x, posTo.y - posFrom.y);
-  float distance = sqrtf(delta.x * delta.x + delta.y * delta.y);
-
-  // Handle self-loops or very close states
+  const auto [distance, edgeFrom, edgeTo] = StatePosHelperData::calcEdges(fromPos, toPos);
   if (distance < 0.001f) {
-    return drawSelfLoop(trans, posFrom, style);
+    return drawSelfLoop(appState, trans, fromPos, style);
   }
-
-  // Normalize direction vector
-  ImVec2 dir = ImVec2(delta.x / distance, delta.y / distance);
-
-  // Calculate edge points by moving inward by radius
-  ImVec2 edgeFrom = ImVec2(posFrom.x + dir.x * _stateRadius, posFrom.y + dir.y * _stateRadius);
-  ImVec2 edgeTo = ImVec2(posTo.x - dir.x * _stateRadius, posTo.y - dir.y * _stateRadius);
 
   // Handle multiple transitions between same states by offsetting the curve
   float arcOffset = style.arcHeight + (style.transitionIndex * 25.0f);
@@ -142,10 +191,7 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core:
     perp.y /= len;
   }
 
-  // Alternate direction for multiple transitions
-  float direction = 1.f;// (style.transitionIndex % 2 == 0) ? 1.0f : -1.0f;
-  ImVec2 control = ImVec2(mid.x + perp.x * arcOffset * direction,
-    mid.y + perp.y * arcOffset * direction);
+  ImVec2 control = ImVec2(mid.x + perp.x * arcOffset, mid.y + perp.y * arcOffset);
 
   // Calculate bezier midpoint (where label goes)
   float t = 0.5f;
@@ -160,85 +206,38 @@ ui::TransitionControlPoints ui::TransitionDrawObject::drawTransition(const core:
   controlPoints.points[TransitionControlPoints::END] = edgeTo;
   controlPoints.isValid = true;
 
+  //float lineThickness = style.lineThickness;
+  //auto lineColor = style.color;
+  auto colorHighlight = style.colorHighlight;
+  if (appState.tm().lastExecutedTransition() == trans.uniqueKey()) {
+    colorHighlight = Colors::cyan;
+    //lineThickness *= 2.0f; // Thicker line
+  }
+
   // Draw quadratic Bezier arc from edge to edge
   dr->AddBezierQuadratic(edgeFrom, control, edgeTo, style.color, style.lineThickness);
-  if (style.colorHightlight) {
-    dr->AddBezierQuadratic(edgeFrom, control, edgeTo, style.colorHightlight.value(), (style.lineThickness / 2.f));
+  if (colorHighlight) {
+    dr->AddBezierQuadratic(edgeFrom, control, edgeTo, colorHighlight.value(), (style.lineThickness / 2.f));
   }
 
   // Draw arrowhead
   drawArrowhead(edgeTo, control, style);
 
-  //// Draw transition label
-  //drawTransitionLabel(trans, edgeFrom, control, edgeTo, style);
-
   return controlPoints;
 }
 
-ui::TransitionControlPoints ui::TransitionDrawObject::drawSelfLoop(const core::Transition &trans, ImVec2 pos, const TransitionStyle &style)
+ui::TransitionControlPoints ui::TransitionDrawObject::drawSelfLoop(AppState &appState, const core::Transition &trans, ImVec2 pos, const TransitionStyle &style)
 {
-  ImDrawList *dr = ImGui::GetWindowDrawList();
-  TransitionControlPoints controlPoints;
-
-  // Position loop based on transition index to avoid overlap
-  const float angle = (style.transitionIndex * 60.0f) * (M_PI / 180.0f); // 60 degrees apart
-
-  const float rate = 0.125f;
-  ImVec2 startPoint = ImVec2(
-    pos.x + cosf(angle - M_PI * rate) * _stateRadius,
-    pos.y + sinf(angle - M_PI * rate) * _stateRadius
-  );
-  ImVec2 endPoint = ImVec2(
-    pos.x + cosf(angle + M_PI * rate) * _stateRadius,
-    pos.y + sinf(angle + M_PI * rate) * _stateRadius
-  );
-
-  //// TODO: correct mid point calculation, let it be farther by float H=10.f 
-  //ImVec2 mid = ImVec2(
-  //  (startPoint.x + endPoint.x) * 0.5f,
-  //  (startPoint.y + endPoint.y) * 0.5f
-  //);
-
-  //float dx = endPoint.x - startPoint.x;
-  //float dy = endPoint.y - startPoint.y;
-  //float L = sqrtf(dx * dx + dy * dy);
-  //if (L < 1e-6f) L = 1.0f;
-
-  //ImVec2 perp = ImVec2(dy / L, -dx / L);
-  //float H = 40.f;
-
-  //ImVec2 midPoint = ImVec2(
-  //  mid.x + perp.x * H,
-  //  mid.y + perp.y * H
-  //);
-
-  //// Set control points
-  //controlPoints.points[TransitionControlPoints::START] = startPoint;
-  //controlPoints.points[TransitionControlPoints::MID] = midPoint;
-  //controlPoints.points[TransitionControlPoints::END] = endPoint;
-  //controlPoints.isValid = true;
-
-  //dr->AddBezierQuadratic(startPoint, midPoint, endPoint, style.color, style.lineThickness);
-
-  //ImVec2 arrowPos = endPoint;
-
-  //// Draw arrowhead
-  //ImVec2 arrowDir = ImVec2(cosf(angle + M_PI * rate), sinf(angle + M_PI * rate));
-  //drawArrowheadAtPoint(arrowPos, arrowDir, style);
-
-  //return controlPoints;
-
-  return drawTransition(trans, startPoint, endPoint, style);
+  auto res = StatePosHelperData::calcEdgesSelfLink(pos, style);
+  return drawTransition(appState, trans, res.edgeFrom, res.edgeTo, style);
 }
 
 void ui::TransitionDrawObject::drawArrowhead(ImVec2 tipPos, ImVec2 controlPos, const TransitionStyle &style)
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
-
   // Compute direction at end of Bezier: tangent from control to tip
   ImVec2 arrowDir = ImVec2(tipPos.x - controlPos.x, tipPos.y - controlPos.y);
   float arrowDirLen = sqrtf(arrowDir.x * arrowDir.x + arrowDir.y * arrowDir.y);
-
   if (arrowDirLen > 0.0f) {
     arrowDir.x /= arrowDirLen;
     arrowDir.y /= arrowDirLen;
@@ -249,15 +248,12 @@ void ui::TransitionDrawObject::drawArrowhead(ImVec2 tipPos, ImVec2 controlPos, c
 void ui::TransitionDrawObject::drawArrowheadAtPoint(ImVec2 tipPos, ImVec2 direction, const TransitionStyle &style)
 {
   ImDrawList *dr = ImGui::GetWindowDrawList();
-
   ImVec2 arrowPerp = ImVec2(-direction.y, direction.x);
   float halfSize = style.arrowSize * 0.5f;
-
   ImVec2 arrowP1 = ImVec2(tipPos.x - direction.x * style.arrowSize + arrowPerp.x * halfSize,
     tipPos.y - direction.y * style.arrowSize + arrowPerp.y * halfSize);
   ImVec2 arrowP2 = ImVec2(tipPos.x - direction.x * style.arrowSize - arrowPerp.x * halfSize,
     tipPos.y - direction.y * style.arrowSize - arrowPerp.y * halfSize);
-
   dr->AddTriangleFilled(tipPos, arrowP1, arrowP2, style.color);
 }
 
@@ -273,12 +269,12 @@ void ui::TransitionDrawObject::draw(ImDrawList *dr) const
     ImVec2 posTo = appState_->statePosition(transition_.to());
     auto style{ style_ };
     if (manipulator_) {
-      style.colorHightlight = Colors::red;
+      style.colorHighlight = Colors::red;
     }
-    controlPoints_ = drawTransition(transition_, posFrom, posTo, style);
+    controlPoints_ = drawTransition(*appState_, transition_, posFrom, posTo, style);
     if (controlPoints_.isValid) {
       const float handleRadius = 4.0f;
-      ImU32 handleColor = Colors::magenta;
+      ImU32 handleColor = Colors::gray;
       dr->AddCircleFilled(controlPoints_.points[TransitionControlPoints::START], handleRadius, handleColor);
       dr->AddCircleFilled(controlPoints_.points[TransitionControlPoints::MID], handleRadius, handleColor);
       dr->AddCircleFilled(controlPoints_.points[TransitionControlPoints::END], handleRadius, handleColor);
@@ -375,29 +371,20 @@ void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
 {
   float t = 0.5f;
   auto pos = getFinalPosition();
-
   const auto &trans = tdo_->getTransition();
   const auto &style = tdo_->transitionStyle();
-
   auto displayC = [](char c) { return c == core::Tape::Blank ? '-' : c; };
-
   auto label = std::format("({}, {} ; {})", displayC(trans.readSymbol()), displayC(trans.writeSymbol()), core::dirToStr(trans.direction()));
-
   ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
-
-  // Add background rectangle for better readability
   ImVec2 labelPos = ImVec2(pos.x - textSize.x / 2, pos.y - textSize.y / 2);
   dr->AddRectFilled(ImVec2(labelPos.x - 2, labelPos.y - 1),
     ImVec2(labelPos.x + textSize.x + 2, labelPos.y + textSize.y + 1),
     IM_COL32(255, 255, 255, 200));
-
   dr->AddText(labelPos, style.textColor, label.c_str());
-
   rect_.x = labelPos.x;
   rect_.y = labelPos.y;
   rect_.w = textSize.x;
   rect_.h = textSize.y;
-
   ImVec2 mousePos = ImGui::GetMousePos();
   if (containsPoint(mousePos.x, mousePos.y) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
     auto p = const_cast<ui::TransitionDrawObject *>(tdo_);
@@ -409,7 +396,6 @@ void ui::TransitionLabelDrawObject::draw(ImDrawList *dr) const
         p->getTransition().setWriteSymbol(tr.writeSymbol());
       });
   }
-
 }
 
 utils::Rect ui::TransitionLabelDrawObject::boundingRect() const
@@ -458,6 +444,84 @@ void ui::TransitionLabelDrawObject::fromJson(const nlohmann::json &j)
 //------------------------------------------------------------------------------------------
 
 
+void ui::StateEditor::openEditor(const core::State &st, std::function<void(const core::State &)> f)
+{
+  onCommit_ = f;
+  showDialog_ = true;
+  state_ = std::make_unique<core::State>(st);
+  std::snprintf(name_, sizeof(name_), "%s", st.name().c_str());
+  switch (state_->type()) {
+  case core::State::Type::START:
+    type_ = 0;
+    break;
+  case core::State::Type::NORMAL:
+    type_ = 1;
+    break;
+  case core::State::Type::ACCEPT:
+    type_ = 2;
+    break;
+  case core::State::Type::REJECT:
+    type_ = 3;
+    break;
+  }
+  ImGui::OpenPopup("Edit State");
+}
+
+void ui::StateEditor::render()
+{
+  if (ImGui::BeginPopupModal("Edit State", &showDialog_, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("Edit State Properties");
+    ImGui::Separator();
+    ImGui::Text("State Name:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100);
+    ImGui::PushStyleColor(ImGuiCol_Border, Colors::gray);
+    ImGui::InputText("##name", name_, sizeof(name_));
+    ImGui::PopStyleColor();
+    ImGui::Text("State Type:");
+    ImGui::SameLine();
+    const char *types[] = { "Start", "Normal", "Accept", "Reject"};
+    ImGui::Combo("##type", &type_, types, 4);
+    if (ImGui::Button("OK")) {
+      applyChanges();
+      showDialog_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      showDialog_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+}
+
+void ui::StateEditor::applyChanges()
+{
+  state_->setName(std::string(name_));
+  switch (type_) {
+  case 0:
+    state_->setType(core::State::Type::START);
+    break;
+  case 1:
+    state_->setType(core::State::Type::NORMAL);
+    break;
+  case 2:
+    state_->setType(core::State::Type::ACCEPT);
+    break;
+  case 3:
+    state_->setType(core::State::Type::REJECT);
+    break;
+  default:
+    break;
+  }
+  onCommit_(*state_);
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
 void ui::TransitionLabelEditor::openEditor(const core::Transition &trans, std::function<void(const core::Transition &)> f)
 {
   onCommit_ = f;
@@ -465,7 +529,17 @@ void ui::TransitionLabelEditor::openEditor(const core::Transition &trans, std::f
   transition_ = std::make_unique<core::Transition>(trans);
   readSymbol_[0] = trans.readSymbol();
   writeSymbol_[0] = trans.writeSymbol();
-  direction_ = (trans.direction() == core::Tape::Dir::LEFT) ? 0 : 1;
+  switch (trans.direction()) {
+  case core::Tape::Dir::LEFT:
+    direction_ = 0;
+    break;
+  case core::Tape::Dir::RIGHT:
+    direction_ = 1;
+    break;
+  case core::Tape::Dir::STAY:
+    direction_ = 2;
+    break;
+  }
   ImGui::OpenPopup("Edit Transition");
 }
 

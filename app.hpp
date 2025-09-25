@@ -23,13 +23,16 @@ public:
 
 private:
   core::TuringMachine tm_;
+  core::MachineExecutor executor_;
   AppState::Menu menu_ = Menu::SELECT;
   std::map<core::State, ImVec2> stateToPosition_;
   ImVec2 canvasOrigin_;
   std::vector<std::unique_ptr<ui::DrawObject>> drawObjects_;
   std::string windowTitle_;
   ui::TransitionLabelEditor labelEditor_;
+  ui::StateEditor stateEditor_;
   ImVec2 scrollXY_;
+  bool freezeManipulation_ = false;
 
   ui::TransitionDrawObject *createTransitionObject(const core::Transition &trans);
 
@@ -45,16 +48,20 @@ public:
   void setWindowTitle(const std::string &s) { windowTitle_ = s; }
 
   ImVec2 statePosition(const core::State &state) const;
+  void removeStatePosition(const core::State &state);
   void setStatePosition(const core::State &state, ImVec2 pos);
 
   const ui::TransitionLabelEditor &transitionLabelEditor() const { return labelEditor_; }
   ui::TransitionLabelEditor &transitionLabelEditor() { return labelEditor_; }
+  const ui::StateEditor &stateEditor() const { return stateEditor_; }
+  ui::StateEditor &stateEditor() { return stateEditor_; }
 
   // --- State / Transition management ---
   void addState(const core::State &state, ImVec2 pos);
   ui::TransitionDrawObject *addTransition(const core::Transition &trans);
   void removeState(const core::State &state);
   void removeTransition(const core::Transition &trans);
+  void updateState(const core::State &what, const core::State &with);
 
   // --- Coordinate transformations ---
   void setCanvasOrigin(const ImVec2 &o);
@@ -80,9 +87,27 @@ public:
 #endif
   void rebuildDrawObjectsFromTM();
 
+  // --- Execution ---
+  void startExecution();
+  void pauseExecution();
+  void stepExecution();
+  void stopExecution();
+  void updateExecution();
+  core::ExecutionState getExecutionState() const;
+  bool isExecuting() const;
+  float executionSpeed() const { return executor_.speedFactor(); }
+  void setExecutionSpeed(float f) { executor_.setSpeedFactor(f); }
+  core::ExecutionValidator::ValidationResult validateMachine() const;
+  std::string getFormattedExecutionTime() const { return executor_.getFormattedTime(); }
+  size_t getCellsUsed() const { return executor_.cellsUsed(); }
+  std::pair<int, int> getTapeRange() const { return tm().tape().getUsedRange(); }
+  size_t getStepCount() const { return executor_.stepCount(); }
 
-  static ImGui::FileBrowser &fileBrowser();
-
+  // --- Misc ---
+  static ImGui::FileBrowser &fileBrowserSave();
+  static ImGui::FileBrowser &fileBrowserOpen();
+  void setFreezeManipulators(bool f) { freezeManipulation_ = f; }
+  bool isFreezedManipulators() const { return freezeManipulation_; }
 };
 
 #endif

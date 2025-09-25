@@ -69,10 +69,10 @@ json AppSerializer::serialize(const AppState &appState)
   j["created"] = getCurrentTimestamp();
 
   // Use existing TuringMachine serialization
-  j["turingMachine"] = json::parse(appState.tm().toJson());
+  j["turingMachine"] = appState.tm().toJson();
 
   // Use existing Tape serialization
-  j["tape"] = json::parse(appState.tm().tape().toJson());
+  j["tape"] = appState.tm().tape().toJson();
 
   // UI state - positions and layout
   j["ui"] = json::object();
@@ -109,12 +109,12 @@ bool AppSerializer::deserialize(const json &j, AppState &appState)
 
     // Load TuringMachine using existing fromJson
     if (j.contains("turingMachine")) {
-      appState.tm().fromJson(j["turingMachine"].dump());
+      appState.tm().fromJson(j["turingMachine"]);
     }
 
     // Load Tape using existing fromJson
     if (j.contains("tape")) {
-      appState.tm().tape().fromJson(j["tape"].dump());
+      appState.tm().tape().fromJson(j["tape"]);
     }
 
     // Rebuild UI state
@@ -159,7 +159,7 @@ bool AppSerializer::deserialize(const json &j, AppState &appState)
       }
 
     }
-
+    appState.tm().reset();
     return true;
   } catch (const std::exception &e) {
     std::cerr << "Load error: " << e.what() << std::endl;
@@ -238,7 +238,7 @@ std::vector<std::string> AppSerializer::getSavedFiles()
 
 void AppSerializer::saveToFileWithDialog(const AppState &appState)
 {
-  auto &dlg = AppState::fileBrowser();
+  auto &dlg = AppState::fileBrowserSave();
   dlg.SetTitle("Save to file");
   dlg.SetTypeFilters({ ".json", ".txt" });
   dlg.Open();
@@ -246,6 +246,10 @@ void AppSerializer::saveToFileWithDialog(const AppState &appState)
 
 void AppSerializer::loadFrFileWithDialog(const AppState &appState)
 {
+  auto &dlg = AppState::fileBrowserOpen();
+  dlg.SetTitle("Open file");
+  dlg.SetTypeFilters({ ".json", ".txt" });
+  dlg.Open();
 }
 
 void AppSerializer::rebuildDrawObjects(AppState &appState)

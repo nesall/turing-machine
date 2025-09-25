@@ -17,26 +17,6 @@ namespace {
 }
 
 
-bool ui::Manipulator::handleMouse(const ImGuiIO &io, ImDrawList *drawList)
-{
-  assert(dro_);
-  auto &appState = *dro_->appState();
-  ImVec2 mousePos = io.MousePos;
-
-  switch (appState.menu()) {
-  case AppState::Menu::SELECT:
-    break;
-  case AppState::Menu::ADD_STATE:
-    break;
-  case AppState::Menu::ADD_TRANSITION:
-    break;
-  }
-
-  return true;
-}
-
-
-
 void ui::StateManipulator::draw(ImDrawList *dr)
 {
   auto rc = dro_->boundingRect();
@@ -49,11 +29,17 @@ void ui::StateManipulator::setFirstPos(float x, float y)
 
 void ui::StateManipulator::setNextPos(float x, float y, const ImVec2 &offset)
 {
+  if (isFreezed()) return;
   dro_->translate(offset);
 }
 
 void ui::StateManipulator::setLastPos(float x, float y)
 {
+}
+
+bool ui::Manipulator::isFreezed() const
+{
+  return !dro_ || dro_->appState()->isFreezedManipulators();
 }
 
 
@@ -88,6 +74,7 @@ void ui::TransitionManipulator::draw(ImDrawList *dr)
 
 void ui::TransitionManipulator::setFirstPos(float x, float y)
 {
+  if (isFreezed()) return;
   std::cout << "TransitionManipulator::setFirstPos\n";
   auto drt = dro_->asTransition();
   assert(drt);
@@ -113,12 +100,13 @@ void ui::TransitionManipulator::setFirstPos(float x, float y)
 
 void ui::TransitionManipulator::setNextPos(float x, float y, const ImVec2 &offset)
 {
+  if (isFreezed()) return;
   auto &appState = *dro_->appState();
   auto &dragState = appState.dragState;
-
+  auto drt = dro_->asTransition();
+  const auto &transition = drt->getTransition();
   if (dro_->isVisible()) {
     if (dragState.isTransitionConnecting()) {
-      //startReconnection(dragState.mode, x, y);
       handleReconnection(dragState.mode, x, y);
     } else if (imp->iPoint.has_value()) {
       switch (imp->iPoint.value()) {
@@ -129,7 +117,17 @@ void ui::TransitionManipulator::setNextPos(float x, float y, const ImVec2 &offse
         handleReconnection(DragState::Mode::TRANSITION_CONNECT_END, x, y);
         return;
       default:
-        handleCurveManipulation(x, y, offset);
+        if (1) {
+          auto fromPos{ appState.statePosition(transition.from()) };
+          auto toPos{ appState.statePosition(transition.to()) };
+          const auto [distance, edgeFrom, edgeTo] = StatePosHelperData::calcEdges(fromPos, toPos);
+          if (distance < 0.001f) {
+            handleSelfLoopManipulation(x, y, offset, drt->style_);
+            //drt->setTransitionStyle(drt->style_);
+          } else {
+            handleCurveManipulation(x, y, offset, edgeFrom, edgeTo);
+          }
+        }
         break;
       }
     }
@@ -138,6 +136,7 @@ void ui::TransitionManipulator::setNextPos(float x, float y, const ImVec2 &offse
 
 void ui::TransitionManipulator::setLastPos(float x, float y)
 {
+  if (isFreezed()) return;
   std::cout << "TransitionManipulator::setLastPos " << this << "\n";
   if (!imp->origTransition_) {
     return;
@@ -165,7 +164,7 @@ void ui::TransitionManipulator::setLastPos(float x, float y)
     }
   }
   appState.dragState.mode = DragState::Mode::NONE;
-  dro_->removeManipulator();
+  //dro_->removeManipulator();
 }  
 
 void ui::TransitionManipulator::startReconnection(DragState::Mode mode, float x, float y)
@@ -175,7 +174,6 @@ void ui::TransitionManipulator::startReconnection(DragState::Mode mode, float x,
   auto &dragState = appState.dragState;
   dragState.mode = mode;
   auto drt = dro_->asTransition();
-  std::cout << "TransitionManipulator::startReconnection " << this << "\n";
   const auto &tr = drt->getTransition();
   imp->origTransition_ = std::make_unique<core::Transition>(tr);
   core::State dummyState;
@@ -207,7 +205,7 @@ void ui::TransitionManipulator::handleReconnection(DragState::Mode mode, float x
   appState.setStatePosition(st, { x, y });
 }
 
-void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const ImVec2 &offset)
+void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const ImVec2 &offset, const ImVec2 &fromPos, const ImVec2 &toPos, bool bEdges)
 {
   auto drt = dro_->asTransition();
   auto style = drt->transitionStyle();
@@ -215,24 +213,17 @@ void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const 
   auto &appState = *dro_->appState();
 
   // Get state positions
-  ImVec2 fromPos = appState.statePosition(transition.from());
-  ImVec2 toPos = appState.statePosition(transition.to());
+  //ImVec2 fromPos = appState.statePosition(transition.from());
+  //ImVec2 toPos = appState.statePosition(transition.to());
 
-  // Handle self-loops differently
-  float distance = sqrtf(pow(toPos.x - fromPos.x, 2) + pow(toPos.y - fromPos.y, 2));
-  if (distance < 0.001f) {
-    handleSelfLoopManipulation(x, y, offset, style);
-    drt->setTransitionStyle(style);
-    return;
-  }
-
-  // Calculate the perpendicular direction (same as in drawTransition)
-  ImVec2 delta = ImVec2(toPos.x - fromPos.x, toPos.y - fromPos.y);
-  ImVec2 dir = ImVec2(delta.x / distance, delta.y / distance);
-
-  // Get edge points
-  ImVec2 edgeFrom = ImVec2(fromPos.x + dir.x * _stateRadius, fromPos.y + dir.y * _stateRadius);
-  ImVec2 edgeTo = ImVec2(toPos.x - dir.x * _stateRadius, toPos.y - dir.y * _stateRadius);
+  //const auto [distance, edgeFrom, edgeTo] = StatePosHelperData::calcEdges(fromPos, toPos);
+  //if (distance < 0.001f) {
+  //  handleSelfLoopManipulation(x, y, offset, style);
+  //  drt->setTransitionStyle(style);
+  //  return;
+  //}
+  const auto &edgeFrom{ fromPos };
+  const auto &edgeTo{ toPos };
   ImVec2 edgeDelta = ImVec2(edgeTo.x - edgeFrom.x, edgeTo.y - edgeFrom.y);
   ImVec2 mid = ImVec2((edgeFrom.x + edgeTo.x) * 0.5f, (edgeFrom.y + edgeTo.y) * 0.5f);
 
@@ -248,7 +239,7 @@ void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const 
   float projectedOffset = offset.x * perp.x + offset.y * perp.y;
 
   // Account for current curve direction (alternating for multiple transitions)
-  float direction = (style.transitionIndex % 2 == 0) ? 1.0f : -1.0f;
+  //float direction = (style.transitionIndex % 2 == 0) ? 1.0f : -1.0f;
 
   // Update arc height based on projected movement (allow negative for curve flipping)
   style.arcHeight += projectedOffset;
@@ -293,20 +284,18 @@ void ui::TransitionManipulator::handleCurveManipulation(float x, float y, const 
 
 void ui::TransitionManipulator::handleSelfLoopManipulation(float x, float y, const ImVec2 &offset, ui::TransitionStyle &style)
 {
-  // For self-loops, adjust the loop size and/or position
   const auto &transition = dro_->asTransition()->getTransition();
-  ImVec2 statePos = dro_->appState()->statePosition(transition.from());
+  ImVec2 pos = dro_->appState()->statePosition(transition.from());
 
   // Calculate distance from state center to mouse
-  float dx = x - statePos.x;
-  float dy = y - statePos.y;
-  float mouseDistance = sqrtf(dx * dx + dy * dy);
+  float dx = x - pos.x;
+  float dy = y - pos.y;
+  //float mouseDistance = sqrtf(dx * dx + dy * dy);
 
-  // Adjust loop radius based on mouse distance
-  float desiredRadius = mouseDistance - StateDrawObject::radius() - style.selfLoopOffset;
-  desiredRadius = std::clamp(desiredRadius, 8.0f, 40.0f);
-
-  style.selfLoopRadius = desiredRadius;
+  //// Adjust loop radius based on mouse distance
+  ////float desiredRadius = mouseDistance - StateDrawObject::radius() - style.selfLoopOffset;
+  ////desiredRadius = std::clamp(desiredRadius, 8.0f, 40.0f);
+  ////style.selfLoopRadius = desiredRadius;
 
   // Optional: Also adjust loop position (angle) based on mouse position
   if (offset.x != 0 || offset.y != 0) {
@@ -315,6 +304,8 @@ void ui::TransitionManipulator::handleSelfLoopManipulation(float x, float y, con
     int newIndex = (int)((angle * 180.0f / M_PI + 360.0f) / 60.0f) % 6;
     style.transitionIndex = newIndex;
   }
+  auto res = StatePosHelperData::calcEdgesSelfLink(pos, style);
+  handleCurveManipulation(x, y, offset, res.edgeTo, res.edgeFrom);
 }
 
 
@@ -341,6 +332,7 @@ void ui::TransitionLabelManipulator::setFirstPos(float x, float y)
 
 void ui::TransitionLabelManipulator::setNextPos(float x, float y, const ImVec2 &offset)
 {
+  if (isFreezed()) return;
   dro_->translate(offset);
 }
 

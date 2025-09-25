@@ -10,6 +10,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+template <typename T> T *UNCONST(const T *v) { return const_cast<T *>(v); }
+template <typename T> T &UNCONST(const T &v) { return const_cast<T &>(v); }
+
 inline std::string nextRandomId() {
   static int counter = 0;
   return std::format("_random_q{}", counter++);
@@ -83,9 +86,14 @@ namespace Colors {
   const auto red{ IM_COL32(255, 0, 0, 255) };
   const auto blue{ IM_COL32(0, 0, 255, 255) };
   const auto gray{ IM_COL32(128, 128, 128, 255) };
-  const auto lightGray{ IM_COL32(192, 192, 192, 255) };
   const auto white{ IM_COL32_WHITE };
   const auto black{ IM_COL32_BLACK };
+
+  const auto lightGray{ IM_COL32(192, 192, 192, 255) };
+  const auto darkGreen{ IM_COL32(0, 164, 0, 255) };
+  const auto darkRed{ IM_COL32(192, 0, 0, 255) };
+  const auto royalBlue{ IM_COL32(65, 105, 225, 255) };
+  const auto dodgerBlue{ IM_COL32(30, 144, 255, 255) };
 
   // Standard web colors
   const auto yellow{ IM_COL32(255, 255, 0, 255) };

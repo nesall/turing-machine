@@ -21,15 +21,24 @@ namespace ui {
     float arcHeight = 40.0f;          // Curve intensity
     float lineThickness = 3.0f;       // Line width
     float arrowSize = 10.0f;          // Arrow dimensions
-    float selfLoopRadius = 15.0f;     // Self-loop circle radius
-    float selfLoopOffset = 20.0f;     // Distance from state center
-    ImU32 color = IM_COL32(255, 165, 0, 255);
-    ImU32 textColor = IM_COL32(0, 0, 0, 255);
-    int transitionIndex = 0;          // For multiple transitions between same states
-    std::optional<ImU32> colorHightlight = std::nullopt;
+    //float selfLoopRadius = 15.0f;     // Self-loop circle radius
+    //float selfLoopOffset = 20.0f;     // Distance from state center
+    ImU32 color = Colors::gray;
+    ImU32 textColor = Colors::black;
+    int transitionIndex = 0; // For multiple transitions between same states
+    float selfLinkRotationAngle = 1.0f;
+    std::optional<ImU32> colorHighlight = std::nullopt;
 
     nlohmann::json toJson() const;
     void fromJson(const nlohmann::json &j);
+  };
+
+  struct StatePosHelperData {
+    float distance = 0.0f;
+    ImVec2 edgeFrom;
+    ImVec2 edgeTo;
+    static StatePosHelperData calcEdges(const ImVec2 &fr, const ImVec2 &to);
+    static StatePosHelperData calcEdgesSelfLink(const ImVec2 &center, const ui::TransitionStyle &style);
   };
 
   struct TransitionControlPoints {
@@ -98,6 +107,7 @@ namespace ui {
   public:
     StateDrawObject(const core::State &state, AppState *app);
     const core::State &getState() const { return state_; }
+    core::State &getState() { return state_; }
 
     void draw(ImDrawList *dr) const override;
     utils::Rect boundingRect() const override;
@@ -106,7 +116,7 @@ namespace ui {
     StateDrawObject *asState() override { return this; }
 
   public:
-    static void drawState(const core::State &state, ImVec2 pos, ImU32 clr, bool temp = false);
+    static void drawState(AppState &appState, const core::State &state, ImVec2 pos, ImU32 clr, bool temp = false);
     static float radius();
   };
 
@@ -140,10 +150,11 @@ namespace ui {
     void fromJson(const nlohmann::json &json);
 
   public:
-    static TransitionControlPoints drawTransition(const core::Transition &trans, ImVec2 posFrom, ImVec2 posTo, const TransitionStyle &style = TransitionStyle{});
+    static TransitionControlPoints drawTransition(
+      AppState &appState, const core::Transition &trans, ImVec2 posFrom, ImVec2 posTo, const TransitionStyle &style = TransitionStyle{});
 
   private:
-    static TransitionControlPoints drawSelfLoop(const core::Transition &trans, ImVec2 pos, const TransitionStyle &style);
+    static TransitionControlPoints drawSelfLoop(AppState &appState, const core::Transition &trans, ImVec2 pos, const TransitionStyle &style);
     static void drawArrowhead(ImVec2 tipPos, ImVec2 controlPos, const TransitionStyle &style);
     static void drawArrowheadAtPoint(ImVec2 tipPos, ImVec2 direction, const TransitionStyle &style);
     //static void drawTransitionLabel(const core::Transition &trans, ImVec2 start, ImVec2 control, ImVec2 end, const TransitionStyle &style);
@@ -174,6 +185,20 @@ namespace ui {
 
   };
 
+
+  class StateEditor {
+  private:
+    bool showDialog_ = false;
+    std::unique_ptr<core::State> state_;
+    char name_[20] = { 0 };
+    int type_ = 0;
+    std::function<void(const core::State &)> onCommit_;
+  public:
+    void openEditor(const core::State &st, std::function<void(const core::State &)> f);
+    void render();
+  private:
+    void applyChanges();
+  };
 
   class TransitionLabelEditor {
   private:

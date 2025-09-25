@@ -1,3 +1,15 @@
+/* Sep 24, 2025
+In the whisper of the trees,
+And the dance of autumn leaves,
+Nature sings a gentle tune,
+Beneath the watchful, silver moon.
+
+Stars twinkle in the dusky sky,
+A canvas where the dreams can fly,
+With every heartbeat, every sigh,
+We weave our stories, you and I.
+*/
+
 #include "ui/render.hpp"
 #include "ui/fa_icons.hpp"
 #include "app.hpp"
@@ -13,8 +25,8 @@
 #include <iostream>
 #include <cassert>
 #include <chrono>
+#include <algorithm>
 #include <optional>
-#include <array>
 
 
 namespace {
@@ -24,7 +36,7 @@ namespace {
   float _tapeHeight = 0;
   float _canvasHeight = 0;
   std::string _statusMessage;
-  std::chrono::steady_clock::time_point _statusTime;
+  std::optional<std::chrono::steady_clock::time_point> _statusTime;
 #ifdef NO_FILEBROWSER
   std::array<char, 255> _fnameBuffer;
 #else
@@ -38,8 +50,9 @@ namespace {
     if (!enabled) {
       ImGui::BeginDisabled();
     }
-
-    if (ImGui::Button(label)) {
+    const float minWidth = 24.0f;
+    float width = (std::max)(minWidth, ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2);
+    if (ImGui::Button(label, { width, 0 })) {
       onClick();
     }
     if (!enabled) {
@@ -83,12 +96,13 @@ namespace {
 } // anonymous namespace
 
 void drawToolbar(AppState &);
-void drawCanvas(AppState &appState);
+void drawCanvas(AppState &);
 void drawTape(AppState &);
-void drawStatusBar(AppState &appState);
+void drawStatusBar(AppState &);
 void handleToolbar(AppState &);
-void drawTempTransition(AppState &appState);
-void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io);
+void drawTempTransition(AppState &);
+void canvasLeftMouseButtonClicked(AppState &, ImGuiIO &);
+void drawInfoPanel(AppState &, const ImVec2 &topLeft);
 
 
 void ui::render(AppState &appState)
@@ -99,6 +113,7 @@ void ui::render(AppState &appState)
   drawStatusBar(appState);
   drawTape(appState);
   drawCanvas(appState);
+  //drawInfoPanel(appState, { 0, _toolbarHeight });
 }
 
 void drawToolbar(AppState &appState)
@@ -107,7 +122,7 @@ void drawToolbar(AppState &appState)
   ImGui::SetWindowPos(ImVec2(0, 0), ImGuiCond_Always);
 
   // Load button  
-  if (ImGui::Button(ICON_FA_FOLDER_OPEN "")) {
+  if (ImGui::Button(ICON_FA_FOLDER_OPEN "", { 24.f, 0.f })) {
 #if NO_FILEBROWSER
     if (AppSerializer::loadFromFile(appState)) {
       _statusMessage = "Loaded successfully!";
@@ -117,16 +132,14 @@ void drawToolbar(AppState &appState)
       _statusTime = std::chrono::steady_clock::now();
     }
 #else
-    appState.fileBrowser().SetTitle("Open file");
-    appState.fileBrowser().SetTypeFilters({".txt", ".json"});
-    appState.fileBrowser().Open();
+    AppSerializer::loadFrFileWithDialog(appState);
     _fileSaving = false;
 #endif
   }
 
   ImGui::SameLine();
 
-  if (ImGui::Button(ICON_FA_SAVE "")) {
+  if (ImGui::Button(ICON_FA_SAVE "", { 24.f, 0.f })) {
 #if NO_FILEBROWSER
     if (AppSerializer::saveToFile(appState, std::string{ _fnameBuffer.data() })) {
       _statusMessage = "Saved successfully!";
@@ -137,9 +150,7 @@ void drawToolbar(AppState &appState)
       _statusTime = std::chrono::steady_clock::now();
     }
 #else
-    appState.fileBrowser().SetTitle("Save file");
-    appState.fileBrowser().SetTypeFilters({ ".txt", ".json" });
-    appState.fileBrowser().Open();
+    AppSerializer::saveToFileWithDialog(appState);
     _fileSaving = true;
 #endif
   }
@@ -188,30 +199,38 @@ void drawToolbar(AppState &appState)
     ImGui::EndCombo();
   }
 #else
-  AppState::fileBrowser().Display();
-  if (AppState::fileBrowser().HasSelected()) {
-    assert(_fileSaving.has_value());
-    auto path = AppState::fileBrowser().GetSelected();
+  AppState::fileBrowserSave().Display();
+  AppState::fileBrowserOpen().Display();
+  if (_fileSaving.has_value()) {
     if (_fileSaving.value()) {
-      if (AppSerializer::saveToFile(appState, std::string{ path.string() })) {
-        _statusMessage = "Saved successfully!";
-        _statusTime = std::chrono::steady_clock::now();
-        appState.setWindowTitle(path.filename().string());
-      } else {
-        _statusMessage = "Save failed!";
-        _statusTime = std::chrono::steady_clock::now();
+      if (AppState::fileBrowserSave().HasSelected()) {
+        auto path = AppState::fileBrowserSave().GetSelected();
+        if (AppSerializer::saveToFile(appState, std::string{ path.string() })) {
+          _statusMessage = "Saved successfully!";
+          _statusTime = std::chrono::steady_clock::now();
+          appState.setWindowTitle(path.filename().string());
+        } else {
+          _statusMessage = "Save failed!";
+          _statusTime = std::chrono::steady_clock::now();
+        }
+        AppState::fileBrowserSave().ClearSelected();
+        _fileSaving = std::nullopt;
       }
     } else {
-      if (AppSerializer::loadFromFile(appState, std::string{ path.string() })) {
-        _statusMessage = "Loaded successfully!";
-        _statusTime = std::chrono::steady_clock::now();
-      } else {
-        _statusMessage = "Load failed!";
-        _statusTime = std::chrono::steady_clock::now();
+      if (AppState::fileBrowserOpen().HasSelected()) {
+        auto path = AppState::fileBrowserOpen().GetSelected();
+
+        if (AppSerializer::loadFromFile(appState, std::string{ path.string() })) {
+          _statusMessage = "Loaded successfully!";
+          _statusTime = std::chrono::steady_clock::now();
+        } else {
+          _statusMessage = "Load failed!";
+          _statusTime = std::chrono::steady_clock::now();
+        }
+        AppState::fileBrowserOpen().ClearSelected();
+        _fileSaving = std::nullopt;
       }
     }
-    AppState::fileBrowser().ClearSelected();
-    _fileSaving = std::nullopt;
   }
 #endif
 
@@ -242,17 +261,48 @@ void drawToolbar(AppState &appState)
   ImGui::Spacing();
   ImGui::SameLine();
 
-  styledButton(ICON_FA_PLAY "", menu == M::RUNNING, true, [&] { appState.setMenu(M::RUNNING); });
+  styledButton(ICON_FA_PLAY "", menu == M::RUNNING, true, [&] {
+    appState.setMenu(M::RUNNING);
+    appState.startExecution();
+    _statusMessage = "Running";
+    _statusTime = std::nullopt;
+    });
   ImGui::SameLine();
-  styledButton(ICON_FA_PAUSE "", menu == M::PAUSED, menu == M::RUNNING, [&] { appState.setMenu(M::PAUSED); });
+  styledButton(ICON_FA_STEP_FORWARD "", false, menu != M::RUNNING, [&] {
+    appState.setMenu(M::PAUSED);
+    appState.stepExecution();
+    _statusMessage = "Steped once";
+    _statusTime = std::chrono::steady_clock::now();
+    });
   ImGui::SameLine();
-  styledButton(ICON_FA_STOP "", false, menu == M::PAUSED || menu == M::RUNNING, [&] { appState.setMenu(M::SELECT); });
+  styledButton(ICON_FA_PAUSE "", menu == M::PAUSED, menu == M::RUNNING, [&] {
+    appState.setMenu(M::PAUSED);
+    appState.pauseExecution();
+    _statusMessage = "Paused";
+    _statusTime = std::nullopt;
+    });
+  ImGui::SameLine();
+  styledButton(ICON_FA_STOP "", false, menu == M::PAUSED || menu == M::RUNNING, [&] {
+    appState.setMenu(M::SELECT);
+    appState.stopExecution();
+    _statusMessage = "Stop";
+    _statusTime = std::chrono::steady_clock::now();
+    });
+
+  float speed = appState.executionSpeed();
+  ImGui::SameLine();
+  ImGui::PushItemWidth(96);
+  if (ImGui::SliderFloat("Speed", &speed, 0.1f, 5.0f, "%.1fx")) {
+    appState.setExecutionSpeed(speed);
+  }
+  ImGui::PopItemWidth();
 
   _toolbarHeight = ImGui::GetWindowHeight();
   ImGui::End();
 }
 
-void drawTape(AppState &appState) {
+void drawTape(AppState &appState)
+{
   static TapeEditor editor;
 
   ImGuiIO &io = ImGui::GetIO();
@@ -408,10 +458,10 @@ void drawStatusBar(AppState &appState)
 
   if (!_statusMessage.empty()) {
     auto now = std::chrono::steady_clock::now();
-    if (std::chrono::duration_cast<std::chrono::seconds>(now - _statusTime).count() < 3) {
+    if (!_statusTime || std::chrono::duration_cast<std::chrono::seconds>(now - *_statusTime).count() < 3) {
       ImGui::SameLine();
       ImGui::TextUnformatted(_statusMessage.c_str());
-    } else {
+    } else if (_statusTime) {
       _statusMessage.clear();
     }
   } else {
@@ -431,6 +481,9 @@ void drawCanvas(AppState &appState)
   ImGui::Begin("Canvas", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
   ImGui::SetWindowPos(topLeft, ImGuiCond_Always);
   ImGui::SetWindowSize(size, ImGuiCond_Always);
+
+  drawInfoPanel(appState, topLeft);
+
   ImGui::BeginChild("ScrollableArea", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
   appState.setCanvasOrigin(ImGui::GetCursorScreenPos());
   appState.setScrollXY({ ImGui::GetScrollX(), ImGui::GetScrollY() });
@@ -479,6 +532,7 @@ void drawCanvas(AppState &appState)
 
   handleToolbar(appState);
 
+
   ImGui::Dummy(ImVec2(2000, 2000)); // Sets the scrollable area size
   ImGui::EndChild();
 
@@ -500,7 +554,7 @@ void handleToolbar(AppState &appState)
       auto pos = io.MousePos;
       auto s = tm.nextUniqueStateName();
       auto t = tm.states().size() == 0 ? core::State::Type::START : core::State::Type::NORMAL;
-      ui::StateDrawObject::drawState(appState.tempAddState_ = core::State(s, t), posOffset(pos), Colors::orange, true);
+      ui::StateDrawObject::drawState(appState, appState.tempAddState_ = core::State(s, t), posOffset(pos), Colors::orange, true);
     }
     break;
   case AppState::Menu::ADD_TRANSITION:
@@ -514,7 +568,7 @@ void drawTempTransition(AppState &appState)
   if (appState.menu() == AppState::Menu::ADD_TRANSITION || appState.dragState.isTransitionConnecting()) {
     auto pos = io.MousePos;
     if (auto pObj = appState.targetObject(pos); pObj && pObj->asState()) {
-      ui::StateDrawObject::drawState(pObj->asState()->getState(), pObj->centerPoint(), Colors::maroon, false);
+      ui::StateDrawObject::drawState(appState, pObj->asState()->getState(), pObj->centerPoint(), Colors::maroon, false);
     }
   }
 }
@@ -574,3 +628,119 @@ void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
     appState.dragState.isDragging = false;
   }
 }
+
+//void drawInfoPanel(AppState &appState, const ImVec2 &canvasPos) {
+//  ImGui::SetNextWindowPos(canvasPos + ImVec2(20, 20), ImGuiCond_Always);
+//  ImGui::SetNextWindowSize(ImVec2(300, 500), ImGuiCond_Always);
+//  ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove |
+//    ImGuiWindowFlags_NoResize |
+//    ImGuiWindowFlags_NoCollapse |
+//    ImGuiWindowFlags_AlwaysAutoResize;
+//  if (ImGui::Begin("Info Panel", nullptr, flags)) {
+//    ImGui::PushStyleColor(ImGuiCol_Text, Colors::black);
+//    ImGui::Text("States: %zu", appState.tm().states().size());
+//    ImGui::Text("Transitions: %zu", appState.tm().transitions().size());
+//    ImGui::Text("Machine state: %s", core::executionStateToStr(appState.getExecutionState()).c_str());
+//    auto result = appState.validateMachine();
+//    ImGui::Text("Validation: %s", result.isValid ? "OK" : "Invalid");
+//    if (!result.isValid) {
+//      ImGui::PushStyleColor(ImGuiCol_Text, Colors::red);
+//      for (const auto &r : result.errors) {
+//        ImGui::TextWrapped("%s", r.c_str());
+//      }
+//      ImGui::PopStyleColor();
+//    }
+//    ImGui::PopStyleColor();
+//  }
+//  ImGui::End();
+//}
+
+
+// Helper function for text wrapping
+std::string wrapText(const std::string &text, float maxWidth) {
+  // Simple word wrapping - you might want a more sophisticated version
+  if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth) {
+    return text;
+  }
+
+  // For now, just truncate with "..."
+  std::string result = text;
+  while (ImGui::CalcTextSize((result + "...").c_str()).x > maxWidth && !result.empty()) {
+    result.pop_back();
+  }
+  return result + "...";
+}
+
+void drawInfoPanel(AppState &appState, const ImVec2 &fixedScreenPos) {
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+  // Panel dimensions
+  const float panelWidth = 280.0f;
+  const float panelHeight = 200.0f;
+  const float padding = 10.0f;
+  const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+
+  ImVec2 panelPos = fixedScreenPos;
+  ImVec2 panelEnd = ImVec2(panelPos.x + panelWidth, panelPos.y + panelHeight);
+
+  // Background panel
+  //drawList->AddRectFilled(panelPos, panelEnd, IM_COL32(240, 240, 240, 220), 5.0f);
+  //drawList->AddRect(panelPos, panelEnd, IM_COL32(100, 100, 100, 255), 5.0f, 0, 1.5f);
+
+  // Text content
+  ImVec2 textPos = ImVec2(panelPos.x + padding, panelPos.y + padding);
+  float currentY = textPos.y;
+
+  // Helper lambda for drawing text lines
+  auto drawTextLine = [&](const std::string &text, ImU32 color = IM_COL32(0, 0, 0, 255)) {
+    drawList->AddText(ImVec2(textPos.x, currentY), color, text.c_str());
+    currentY += lineHeight;
+    };
+
+  // Panel content
+  drawTextLine("Machine Info", IM_COL32(0, 0, 0, 255));
+  currentY += 5; // Small gap
+
+  drawTextLine(std::format("States: {}", appState.tm().states().size()));
+  drawTextLine(std::format("Transitions: {}", appState.tm().transitions().size()));
+
+  auto execState = appState.getExecutionState();
+  std::string stateStr = std::format("Status: {}", core::executionStateToStr(execState));
+  drawTextLine(stateStr);
+  if (execState == core::ExecutionState::FINISHED) {
+    auto st{ appState.tm().currentState() };
+    if (st.isAccept()) drawTextLine("State: ACCEPTED", Colors::darkGreen);
+    if (st.isReject()) drawTextLine("State: REJECTED", Colors::darkRed);
+  }
+
+  if (execState != core::ExecutionState::STOPPED) {
+    currentY += 5;
+    drawTextLine("Execution Metrics", IM_COL32(0, 0, 0, 255));
+    drawTextLine(std::format("Steps: {}", appState.getStepCount()));
+    drawTextLine(std::format("Time: {}", appState.getFormattedExecutionTime()));
+    drawTextLine(std::format("Cells used: {}", appState.getCellsUsed()));
+    auto [minPos, maxPos] = appState.getTapeRange();
+    drawTextLine(std::format("Tape range: {} to {}", minPos, maxPos));
+    if (appState.isExecuting()) {
+      drawTextLine(std::format("Current state: {}", appState.tm().currentState().name()));
+      drawTextLine(std::format("Head at: {}", appState.tm().tape().head()));
+    }
+  }
+  // Validation status
+  currentY += 5;
+  auto validation = appState.validateMachine();
+  std::string validStr = std::format("Validation: {}", validation.isValid ? "OK" : "Invalid");
+  ImU32 validColor = validation.isValid ? Colors::black : Colors::darkRed;
+  drawTextLine(validStr, validColor);
+
+  // Show validation errors
+  if (!validation.isValid && currentY + lineHeight < panelEnd.y - padding) {
+    for (const auto &error : validation.errors) {
+      if (currentY + lineHeight > panelEnd.y - padding) break;
+      // Word wrap long errors
+      std::string wrappedError = wrapText(error, panelWidth - 2 * padding);
+      drawTextLine(wrappedError, IM_COL32(180, 0, 0, 255));
+    }
+  }
+}
+
