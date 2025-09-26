@@ -58,6 +58,7 @@ namespace ui {
   class StateDrawObject;
   class TransitionDrawObject;
   class TransitionLabelDrawObject;
+  class SelectionDrawObject;
 
   class DrawObject {
   public:
@@ -72,9 +73,8 @@ namespace ui {
     void setVisible(bool visible) { visible_ = visible; }
     bool isVisible() const { return visible_; }
 
-    // Optional: type checking
-    //virtual DrawObjectType getType() const = 0;
-
+    bool isSelected() const { return nullptr != getManipulator(); }
+  
     virtual ui::Manipulator *getOrCreateManipulator(bool bCreate) = 0;
     ui::Manipulator *createManipulator() { return getOrCreateManipulator(true); }
     ui::Manipulator *getManipulator() const { return const_cast<DrawObject *>(this)->getOrCreateManipulator(false); }
@@ -83,15 +83,18 @@ namespace ui {
     virtual StateDrawObject *asState() { return nullptr; }
     virtual TransitionDrawObject *asTransition() { return nullptr; }
     virtual TransitionLabelDrawObject *asTransitionLabel() { return nullptr; }
+    virtual SelectionDrawObject *asSelection() { return nullptr; }
 
     const StateDrawObject *asState() const { return const_cast<DrawObject *>(this)->asState(); }
     const TransitionDrawObject *asTransition() const { return const_cast<DrawObject *>(this)->asTransition(); }
     const TransitionLabelDrawObject *asTransitionLabel() const { return const_cast<DrawObject *>(this)->asTransitionLabel(); }
+    const SelectionDrawObject *asSelection() const { return const_cast<DrawObject *>(this)->asSelection(); }
 
     template <class T> T *asType() { return nullptr; }
     template <> StateDrawObject *asType() { return asState(); }
     template <> TransitionDrawObject *asType() { return asTransition(); }
     template <> TransitionLabelDrawObject *asType() { return asTransitionLabel(); }
+    template <> SelectionDrawObject *asType() { return asSelection(); }
     template <class T> const T *asType() const { return const_cast<DrawObject *>(this)->asType<T>(); }
 
     AppState *appState() const { return appState_; }
@@ -185,15 +188,31 @@ namespace ui {
 
   };
 
+  class SelectionDrawObject : public DrawObject {
+    ImVec2 startPos_;
+    ImVec2 endPos_;
+  public:
+    SelectionDrawObject(AppState *app);
+    void draw(ImDrawList *dr) const override;
+    utils::Rect boundingRect() const override;
+    void translate(const ImVec2 &delta) override;
+    ui::Manipulator *getOrCreateManipulator(bool bCreate) override;
+    SelectionDrawObject *asSelection() override { return this; }
+    void setPos0(float x, float y);
+    void setPos1(float x, float y);
+    void reset();
+  };
 
   class StateEditor {
   private:
+    AppState &appState_;
     bool showDialog_ = false;
     std::unique_ptr<core::State> state_;
     char name_[20] = { 0 };
     int type_ = 0;
     std::function<void(const core::State &)> onCommit_;
   public:
+    StateEditor(AppState &a) :appState_(a) {}
     void openEditor(const core::State &st, std::function<void(const core::State &)> f);
     void render();
   private:
@@ -202,6 +221,7 @@ namespace ui {
 
   class TransitionLabelEditor {
   private:
+    AppState &appState_;
     bool showDialog_ = false;
     std::unique_ptr<core::Transition> transition_;
     char readSymbol_[2] = "";
@@ -209,6 +229,7 @@ namespace ui {
     int direction_ = 0;
     std::function<void(const core::Transition &)> onCommit_;
   public:
+    TransitionLabelEditor(AppState &a) :appState_(a) {}
     void openEditor(const core::Transition &trans, std::function<void(const core::Transition &)> f);
     void render();
   private:

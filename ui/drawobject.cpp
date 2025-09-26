@@ -7,7 +7,7 @@
 #include <format>
 #include <string>
 #include <cstring>
-#include <cassert>
+#include <iostream>
 
 
 namespace {
@@ -444,6 +444,62 @@ void ui::TransitionLabelDrawObject::fromJson(const nlohmann::json &j)
 //------------------------------------------------------------------------------------------
 
 
+ui::SelectionDrawObject::SelectionDrawObject(AppState *a) : ui::DrawObject(a)
+{
+}
+
+void ui::SelectionDrawObject::draw(ImDrawList *dr) const
+{
+  const auto &rc = boundingRect();
+  ImVec2 p1{ rc.x + rc.w, rc.y + rc.h };
+  ImVec2 p0{ rc.x, rc.y };
+  dr->AddRect(p0, p1, Colors::gray, 0.0f, 0, 1.0f);
+  dr->AddRectFilled(p0, p1, IM_COL32(200, 200, 255, 50));
+}
+
+utils::Rect ui::SelectionDrawObject::boundingRect() const
+{
+  auto minX = std::min(startPos_.x, endPos_.x);
+  auto minY = std::min(startPos_.y, endPos_.y);
+  auto maxX = std::max(startPos_.x, endPos_.x);
+  auto maxY = std::max(startPos_.y, endPos_.y);
+  return utils::Rect{ minX, minY, maxX - minX, maxY - minY };
+}
+
+void ui::SelectionDrawObject::translate(const ImVec2 &)
+{
+}
+
+ui::Manipulator *ui::SelectionDrawObject::getOrCreateManipulator(bool bCreate)
+{
+  if (manipulator_) return manipulator_.get();
+  if (bCreate) {
+    manipulator_.reset(new ui::SelectionManipulator(this));
+    return manipulator_.get();
+  }
+  return nullptr;
+}
+
+void ui::SelectionDrawObject::setPos0(float x, float y)
+{
+  startPos_ = ImVec2(x, y);
+  endPos_ = startPos_;
+}
+
+void ui::SelectionDrawObject::setPos1(float x, float y)
+{
+  endPos_ = ImVec2(x, y);
+}
+
+void ui::SelectionDrawObject::reset()
+{
+  startPos_ = endPos_ = { 0, 0 };
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
 void ui::StateEditor::openEditor(const core::State &st, std::function<void(const core::State &)> f)
 {
   onCommit_ = f;
@@ -464,12 +520,13 @@ void ui::StateEditor::openEditor(const core::State &st, std::function<void(const
     type_ = 3;
     break;
   }
-  ImGui::OpenPopup("Edit State");
+  ImGui::OpenPopup("Edit state");
+  appState_.registerPopupName("Edit state");
 }
 
 void ui::StateEditor::render()
 {
-  if (ImGui::BeginPopupModal("Edit State", &showDialog_, ImGuiWindowFlags_AlwaysAutoResize)) {
+  if (ImGui::BeginPopupModal("Edit state", &showDialog_, ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::Text("Edit State Properties");
     ImGui::Separator();
     ImGui::Text("State Name:");
@@ -540,12 +597,13 @@ void ui::TransitionLabelEditor::openEditor(const core::Transition &trans, std::f
     direction_ = 2;
     break;
   }
-  ImGui::OpenPopup("Edit Transition");
+  ImGui::OpenPopup("Edit transition");
+  appState_.registerPopupName("Edit transition");
 }
 
 void ui::TransitionLabelEditor::render()
 {
-  if (ImGui::BeginPopupModal("Edit Transition", &showDialog_, ImGuiWindowFlags_AlwaysAutoResize)) {
+  if (ImGui::BeginPopupModal("Edit transition", &showDialog_, ImGuiWindowFlags_AlwaysAutoResize)) {
 
     ImGui::Text("Edit Transition Properties");
     ImGui::Separator();

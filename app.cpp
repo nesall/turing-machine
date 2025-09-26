@@ -3,6 +3,25 @@
 #include "ui/imfilebrowser.h"
 
 
+
+AppState::AppState() : labelEditor_(*this), stateEditor_(*this), selectionObj_(this)
+{
+}
+
+void AppState::reset()
+{
+  tm_ = {};
+  executor_ = {};
+  menu_ = Menu::SELECT;
+  stateToPosition_.clear();
+  drawObjects_.clear();
+  selectionObj_.reset();
+  windowTitle_ = "Turing Machine GUI";
+  scrollXY_ = ImVec2{ 0, 0 };
+  dragState = {};
+  tempAddState_ = {};
+}
+
 void AppState::setMenu(AppState::Menu m)
 { 
   menu_ = m; 
@@ -131,6 +150,7 @@ utils::Rect AppState::canvasToScreen(const utils::Rect &p) const
 
 ui::DrawObject *AppState::targetObject(const ImVec2 &pos) const
 {
+  if (hasOpenPopup()) return nullptr;
   ui::DrawObject *other = nullptr;
   ui::DrawObject *transitionHit = nullptr;
   for (auto &obj : drawObjects_) {
@@ -154,6 +174,7 @@ void AppState::drawObjects(ImDrawList *dr)
       p->draw(dr);
     }
   }
+  selectionObj_.draw(dr);
   transitionLabelEditor().render();
   stateEditor().render();
 }
@@ -198,6 +219,8 @@ std::vector<ui::Manipulator *> AppState::getManipulators() const
       mans.push_back(p);
     }
   }
+  //if (auto p = selectionObj_.getManipulator())
+  //  mans.push_back(p);
   return mans;
 }
 
@@ -234,6 +257,19 @@ ImGui::FileBrowser &AppState::fileBrowserOpen()
 {
   static ImGui::FileBrowser t;
   return t;
+}
+
+void AppState::registerPopupName(const std::string &s)
+{
+  popupNames_.insert(s);
+}
+
+bool AppState::hasOpenPopup() const
+{
+  for (const auto &id : popupNames_)
+    if (ImGui::IsPopupOpen(id.c_str()))
+      return true;
+  return false;
 }
 
 void AppState::rebuildDrawObjectsFromTM()

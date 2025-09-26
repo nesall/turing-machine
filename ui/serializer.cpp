@@ -63,29 +63,18 @@ namespace {
 json AppSerializer::serialize(const AppState &appState)
 {
   json j;
-
-  // Metadata
   j["version"] = "1.0";
   j["created"] = getCurrentTimestamp();
-
-  // Use existing TuringMachine serialization
   j["turingMachine"] = appState.tm().toJson();
-
-  // Use existing Tape serialization
   j["tape"] = appState.tm().tape().toJson();
-
-  // UI state - positions and layout
   j["ui"] = json::object();
   j["ui"]["mode"] = modeToString(appState.menu());
-
-  // State positions
   j["ui"]["statePositions"] = json::object();
   for (const auto &state : appState.tm().states()) {
     ImVec2 pos = appState.statePosition(state) + appState.scrollXY() - appState.canvasOrigin();
     std::string name = state.name();
     j["ui"]["statePositions"][name] = { {"x", pos.x}, {"y", pos.y} };
   }
-
   j["ui"]["transitionStyles"] = json::object();
   j["ui"]["transitionLabels"] = json::object();
   for (size_t i = 0; i < appState.nofDrawObjects(); i ++) {
@@ -104,44 +93,30 @@ json AppSerializer::serialize(const AppState &appState)
 bool AppSerializer::deserialize(const json &j, AppState &appState)
 {
   try {
-    // Clear current state
-    appState = AppState();
-
-    // Load TuringMachine using existing fromJson
+    appState.reset();
     if (j.contains("turingMachine")) {
       appState.tm().fromJson(j["turingMachine"]);
     }
-
-    // Load Tape using existing fromJson
     if (j.contains("tape")) {
       appState.tm().tape().fromJson(j["tape"]);
     }
-
-    // Rebuild UI state
     rebuildDrawObjects(appState);
-
-    // Load UI settings
     if (j.contains("ui")) {
       const auto &ui = j["ui"];
-
-      // Load mode
       if (ui.contains("mode")) {
         appState.setMenu(stringToMode(ui["mode"]));
       }
-
-      // Load state positions
       if (ui.contains("statePositions")) {
         for (const auto &[stateName, posJson] : ui["statePositions"].items()) {
           for (const auto &state : appState.tm().states()) {
             if (state.name() == stateName) {
               ImVec2 pos{ posJson["x"], posJson["y"] };
-              appState.setStatePosition(state, pos);
+              appState.setStatePosition(state, pos - appState.scrollXY() + appState.canvasOrigin());
               break;
             }
           }
         }
       }
-
       if (ui.contains("transitionStyles")) {
         for (const auto &[transKey, styleData] : ui["transitionStyles"].items()) {
           if (auto transObj = findTransitionDrawObject(appState, transKey)) {
@@ -149,7 +124,6 @@ bool AppSerializer::deserialize(const json &j, AppState &appState)
           }
         }
       }
-
       if (ui.contains("transitionLabels")) {
         for (const auto &[transKey, labelData] : ui["transitionLabels"].items()) {
           if (auto labelObj = findTransitionLabelDrawObject(appState, transKey)) {

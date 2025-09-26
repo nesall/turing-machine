@@ -7,6 +7,7 @@
 #include "ui/drawobject.hpp"
 #include <imgui.h>
 #include <map>
+#include <set>
 #include <vector>
 #include <memory>
 #include <string>
@@ -32,11 +33,15 @@ private:
   ui::TransitionLabelEditor labelEditor_;
   ui::StateEditor stateEditor_;
   ImVec2 scrollXY_;
-  bool freezeManipulation_ = false;
+  std::set<std::string> popupNames_;
+  ui::SelectionDrawObject selectionObj_;
 
   ui::TransitionDrawObject *createTransitionObject(const core::Transition &trans);
 
 public:
+  AppState();
+  void reset();
+
   DragState dragState;
   core::State tempAddState_;
 
@@ -86,6 +91,9 @@ public:
   void updateObjects();
 #endif
   void rebuildDrawObjectsFromTM();
+  ui::SelectionDrawObject &selectionObj() { return selectionObj_; }
+  const ui::SelectionDrawObject &selectionObj() const { return selectionObj_; }
+  bool isActiveSelection() const { return selectionObj_.getManipulator(); }
 
   // --- Execution ---
   void startExecution();
@@ -106,8 +114,9 @@ public:
   // --- Misc ---
   static ImGui::FileBrowser &fileBrowserSave();
   static ImGui::FileBrowser &fileBrowserOpen();
-  void setFreezeManipulators(bool f) { freezeManipulation_ = f; }
-  bool isFreezedManipulators() const { return freezeManipulation_; }
+
+  void registerPopupName(const std::string &s);
+  bool hasOpenPopup() const;
 };
 
 #endif

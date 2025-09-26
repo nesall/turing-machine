@@ -39,7 +39,7 @@ void ui::StateManipulator::setLastPos(float x, float y)
 
 bool ui::Manipulator::isFreezed() const
 {
-  return !dro_ || dro_->appState()->isFreezedManipulators();
+  return !dro_ || dro_->appState()->hasOpenPopup();
 }
 
 
@@ -164,7 +164,6 @@ void ui::TransitionManipulator::setLastPos(float x, float y)
     }
   }
   appState.dragState.mode = DragState::Mode::NONE;
-  //dro_->removeManipulator();
 }  
 
 void ui::TransitionManipulator::startReconnection(DragState::Mode mode, float x, float y)
@@ -338,4 +337,48 @@ void ui::TransitionLabelManipulator::setNextPos(float x, float y, const ImVec2 &
 
 void ui::TransitionLabelManipulator::setLastPos(float x, float y)
 {
+}
+
+
+//------------------------------------------------------------------------------------------
+
+
+void ui::SelectionManipulator::draw(ImDrawList *)
+{
+}
+
+void ui::SelectionManipulator::setFirstPos(float x, float y)
+{
+  auto drs = dro_->asType<ui::SelectionDrawObject>();
+  assert(drs);
+  drs->setPos0(x, y);
+}
+
+void ui::SelectionManipulator::setNextPos(float x, float y, const ImVec2 &)
+{
+  ImGuiIO &io = ImGui::GetIO();
+  auto drs = dro_->asType<ui::SelectionDrawObject>();
+  assert(drs);
+  drs->setPos1(x, y);
+  auto rc = drs->boundingRect();
+  auto &appState = *dro_->appState();
+  for (int j = 0; j < appState.nofDrawObjects(); j ++) {
+    auto obj = appState.getDrawObject(j);
+    if (!obj->asState()) continue;
+    if (io.KeyCtrl && obj->isSelected()) continue;
+    auto r = obj->boundingRect();
+    if (rc.intersects(r)) {
+      UNCONST(obj)->createManipulator();
+    } else {
+      UNCONST(obj)->removeManipulator();
+    }
+  }
+}
+
+void ui::SelectionManipulator::setLastPos(float x, float y)
+{
+  auto drs = dro_->asType<ui::SelectionDrawObject>();
+  assert(drs);
+  drs->reset();
+  drs->removeManipulator();
 }

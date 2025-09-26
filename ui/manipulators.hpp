@@ -74,9 +74,14 @@ namespace ui {
   };
 
 
-  //class SelectionManipulator : public Manipulator {
-  //  // Handle selection box, multi-select
-  //};
+  class SelectionManipulator : public Manipulator {
+  public:
+    SelectionManipulator(ui::DrawObject *p) : Manipulator(p) {}
+    void draw(ImDrawList *dr) override;
+    void setFirstPos(float x, float y) override;
+    void setNextPos(float x, float y, const ImVec2 &offset) override;
+    void setLastPos(float x, float y) override;
+  };
 
 }
 

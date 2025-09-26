@@ -107,13 +107,10 @@ void drawInfoPanel(AppState &, const ImVec2 &topLeft);
 
 void ui::render(AppState &appState)
 {
-  ImGuiIO &io = ImGui::GetIO();
-
   drawToolbar(appState);
   drawStatusBar(appState);
   drawTape(appState);
   drawCanvas(appState);
-  //drawInfoPanel(appState, { 0, _toolbarHeight });
 }
 
 void drawToolbar(AppState &appState)
@@ -506,8 +503,13 @@ void drawCanvas(AppState &appState)
   }
 
   if (appState.dragState.isDragging) {
-    auto mans = appState.getManipulators();
-    for (auto m : mans) {
+    if (!appState.isActiveSelection()) {
+      auto mans = appState.getManipulators();
+      for (auto m : mans) {
+        m->setNextPos(mousePos, mousePos - appState.dragState.dragStartPos);
+      }
+    }
+    if (auto m = appState.selectionObj().getManipulator()) {
       m->setNextPos(mousePos, mousePos - appState.dragState.dragStartPos);
     }
     appState.dragState.dragStartPos = mousePos;
@@ -516,8 +518,13 @@ void drawCanvas(AppState &appState)
   if (appState.dragState.isDragging && !ImGui::IsMouseDown(0)) {
     if (!appState.dragState.isTransitionConnecting()) {
       appState.dragState.isDragging = false;
-      auto mans = appState.getManipulators();
-      for (auto m : mans) {
+      if (!appState.isActiveSelection()) {
+        auto mans = appState.getManipulators();
+        for (auto m : mans) {
+          m->setLastPos(mousePos);
+        }
+      }
+      if (auto m = appState.selectionObj().getManipulator()) {
         m->setLastPos(mousePos);
       }
     }
@@ -586,8 +593,11 @@ void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
       if (auto pObj = appState.targetObject(mousePos)) {
         auto man = pObj->createManipulator();
         man->setFirstPos(mousePos);
+        appState.selectionObj().removeManipulator();
       } else {
         appState.clearManipulators();
+        auto man = appState.selectionObj().createManipulator();
+        man->setFirstPos(mousePos);
       }
     }
     break;
@@ -629,41 +639,10 @@ void canvasLeftMouseButtonClicked(AppState &appState, ImGuiIO &io)
   }
 }
 
-//void drawInfoPanel(AppState &appState, const ImVec2 &canvasPos) {
-//  ImGui::SetNextWindowPos(canvasPos + ImVec2(20, 20), ImGuiCond_Always);
-//  ImGui::SetNextWindowSize(ImVec2(300, 500), ImGuiCond_Always);
-//  ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove |
-//    ImGuiWindowFlags_NoResize |
-//    ImGuiWindowFlags_NoCollapse |
-//    ImGuiWindowFlags_AlwaysAutoResize;
-//  if (ImGui::Begin("Info Panel", nullptr, flags)) {
-//    ImGui::PushStyleColor(ImGuiCol_Text, Colors::black);
-//    ImGui::Text("States: %zu", appState.tm().states().size());
-//    ImGui::Text("Transitions: %zu", appState.tm().transitions().size());
-//    ImGui::Text("Machine state: %s", core::executionStateToStr(appState.getExecutionState()).c_str());
-//    auto result = appState.validateMachine();
-//    ImGui::Text("Validation: %s", result.isValid ? "OK" : "Invalid");
-//    if (!result.isValid) {
-//      ImGui::PushStyleColor(ImGuiCol_Text, Colors::red);
-//      for (const auto &r : result.errors) {
-//        ImGui::TextWrapped("%s", r.c_str());
-//      }
-//      ImGui::PopStyleColor();
-//    }
-//    ImGui::PopStyleColor();
-//  }
-//  ImGui::End();
-//}
-
-
-// Helper function for text wrapping
 std::string wrapText(const std::string &text, float maxWidth) {
-  // Simple word wrapping - you might want a more sophisticated version
   if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth) {
     return text;
   }
-
-  // For now, just truncate with "..."
   std::string result = text;
   while (ImGui::CalcTextSize((result + "...").c_str()).x > maxWidth && !result.empty()) {
     result.pop_back();
@@ -673,37 +652,25 @@ std::string wrapText(const std::string &text, float maxWidth) {
 
 void drawInfoPanel(AppState &appState, const ImVec2 &fixedScreenPos) {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
-
-  // Panel dimensions
   const float panelWidth = 280.0f;
   const float panelHeight = 200.0f;
   const float padding = 10.0f;
   const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-
   ImVec2 panelPos = fixedScreenPos;
   ImVec2 panelEnd = ImVec2(panelPos.x + panelWidth, panelPos.y + panelHeight);
-
   // Background panel
   //drawList->AddRectFilled(panelPos, panelEnd, IM_COL32(240, 240, 240, 220), 5.0f);
   //drawList->AddRect(panelPos, panelEnd, IM_COL32(100, 100, 100, 255), 5.0f, 0, 1.5f);
-
-  // Text content
   ImVec2 textPos = ImVec2(panelPos.x + padding, panelPos.y + padding);
   float currentY = textPos.y;
-
-  // Helper lambda for drawing text lines
   auto drawTextLine = [&](const std::string &text, ImU32 color = IM_COL32(0, 0, 0, 255)) {
     drawList->AddText(ImVec2(textPos.x, currentY), color, text.c_str());
     currentY += lineHeight;
     };
-
-  // Panel content
   drawTextLine("Machine Info", IM_COL32(0, 0, 0, 255));
   currentY += 5; // Small gap
-
   drawTextLine(std::format("States: {}", appState.tm().states().size()));
   drawTextLine(std::format("Transitions: {}", appState.tm().transitions().size()));
-
   auto execState = appState.getExecutionState();
   std::string stateStr = std::format("Status: {}", core::executionStateToStr(execState));
   drawTextLine(stateStr);
@@ -712,7 +679,6 @@ void drawInfoPanel(AppState &appState, const ImVec2 &fixedScreenPos) {
     if (st.isAccept()) drawTextLine("State: ACCEPTED", Colors::darkGreen);
     if (st.isReject()) drawTextLine("State: REJECTED", Colors::darkRed);
   }
-
   if (execState != core::ExecutionState::STOPPED) {
     currentY += 5;
     drawTextLine("Execution Metrics", IM_COL32(0, 0, 0, 255));
@@ -726,18 +692,14 @@ void drawInfoPanel(AppState &appState, const ImVec2 &fixedScreenPos) {
       drawTextLine(std::format("Head at: {}", appState.tm().tape().head()));
     }
   }
-  // Validation status
   currentY += 5;
   auto validation = appState.validateMachine();
   std::string validStr = std::format("Validation: {}", validation.isValid ? "OK" : "Invalid");
   ImU32 validColor = validation.isValid ? Colors::black : Colors::darkRed;
   drawTextLine(validStr, validColor);
-
-  // Show validation errors
   if (!validation.isValid && currentY + lineHeight < panelEnd.y - padding) {
     for (const auto &error : validation.errors) {
       if (currentY + lineHeight > panelEnd.y - padding) break;
-      // Word wrap long errors
       std::string wrappedError = wrapText(error, panelWidth - 2 * padding);
       drawTextLine(wrappedError, IM_COL32(180, 0, 0, 255));
     }

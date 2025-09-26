@@ -51,6 +51,9 @@ namespace utils {
     bool contains(float px, float py) const {
       return (px >= x && px <= x + w && py >= y && py <= y + h);
     }
+    bool intersects(const Rect &r) const {
+      return !(r.x > x + w || r.x + r.w < x || r.y > y + h || r.y + r.h < y);
+    }
     ImVec2 center() const {
       return ImVec2(x + w * 0.5f, y + h * 0.5f);
     }
