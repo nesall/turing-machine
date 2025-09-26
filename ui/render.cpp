@@ -237,11 +237,11 @@ void drawToolbar(AppState &appState)
 
   using M = AppState::Menu;
   const auto &menu = appState.menu();
-  styledButton(ICON_FA_MOUSE_POINTER " Select", menu == M::SELECT, true, [&] { appState.setMenu(M::SELECT); });
+  styledButton(ICON_FA_MOUSE_POINTER " Select", menu == M::SELECT, menu != M::RUNNING, [&] { appState.setMenu(M::SELECT); });
   ImGui::SameLine();
-  styledButton(ICON_FA_PLUS_CIRCLE " Add State", menu == M::ADD_STATE, true, [&] { appState.setMenu(M::ADD_STATE); });
+  styledButton(ICON_FA_PLUS_CIRCLE " Add State", menu == M::ADD_STATE, menu != M::RUNNING, [&] { appState.setMenu(M::ADD_STATE); });
   ImGui::SameLine();
-  styledButton(ICON_FA_PLUS " Add Transition", menu == M::ADD_TRANSITION, true, [&] { appState.setMenu(M::ADD_TRANSITION); });
+  styledButton(ICON_FA_PLUS " Add Transition", menu == M::ADD_TRANSITION, menu != M::RUNNING, [&] { appState.setMenu(M::ADD_TRANSITION); });
 
   ImGui::SameLine();
   ImGui::Spacing();
